@@ -1,8 +1,23 @@
-# simple-rag
+# HippoDocs
+
+A minimal RAG (Retrieval-Augmented Generation) API built with FastAPI, LangChain, and pgvector.
 
 > **v0.0.1** — under development.
 
-A minimal RAG (Retrieval-Augmented Generation) API built with FastAPI, LangChain, and pgvector.
+## To do list
+
+- [ ] Add testing.
+- [ ] Add monitoring and observability.
+- [ ] Add a security layer for PII protection, input sanitization, and output validation.
+- [ ] Support additional input file types.
+- [ ] Add workspace functionality so that each chat has its own sources.
+- [ ] Add source citations and references to answers.
+- [ ] Switch to asynchronus architecture.
+- [ ] Implement user management, register, login, and authentication.
+- [ ] Add a Streamlit UI.
+- [ ] Dockerize the application.
+- [ ] Implement a CI pipeline.
+
 
 ## Quick start
 
@@ -28,3 +43,4 @@ uv run python -m app.main
 ## Configuration
 
 See `.env.example`. Supports Ollama and OpenAI-compatible providers for both embeddings and LLM, with optional fallback providers.
+

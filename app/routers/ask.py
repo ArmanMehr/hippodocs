@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
+from app.dependencies import RagServiceDep
 from app.limiter import limiter
 from app.schemas import AskChatSchema, ChatResponseSchema
-from app.services.agent import RagService
-from app.services.factory import get_rag_service
 
 router = APIRouter(prefix="/ask", tags=["ask"])
 
@@ -13,7 +12,7 @@ router = APIRouter(prefix="/ask", tags=["ask"])
 def ask_question(
     request: Request,
     payload: AskChatSchema,
-    rag_service: RagService = Depends(get_rag_service),
+    rag_service: RagServiceDep,
 ):
     answer = rag_service.query(payload.question)
     return ChatResponseSchema(content=answer)

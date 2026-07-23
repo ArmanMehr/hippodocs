@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "simple-rag"
+name = "hippodocs"
 version = "0.0.1"
-description = "Just a simple rag system using langchain."
+description = "Self-hosted RAG platform - ingest documents, ask questions, get cited answers."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

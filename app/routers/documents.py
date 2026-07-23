@@ -1,6 +1,5 @@
 from fastapi import (
     APIRouter,
-    Depends,
     File,
     HTTPException,
     Query,
@@ -11,11 +10,9 @@ from fastapi import (
 from langchain_core.documents import Document as LCDocument
 
 from app.configs import get_settings
+from app.dependencies import DocumentRepositoryDep, IngestionPipelineDep
 from app.limiter import limiter
 from app.schemas import DocumentCreateSchema, DocumentListSchema, DocumentSchema
-from app.services.embedding import DocumentIngestionPipeline
-from app.services.factory import get_document_repository, get_ingestion_pipeline
-from app.services.repository import DocumentRepository
 from app.utils.loader import load_pdf
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -27,8 +24,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 @limiter.limit("60/minute")
 def add_document(
     request: Request,
+    pipeline: IngestionPipelineDep,
     payload: DocumentCreateSchema,
-    pipeline: DocumentIngestionPipeline = Depends(get_ingestion_pipeline),
 ):
 
     docs = pipeline.run([LCDocument(page_content=payload.text)])
@@ -41,8 +38,8 @@ def add_document(
 @limiter.limit("10/minute")
 def upload_document(
     request: Request,
+    pipeline: IngestionPipelineDep,
     file: UploadFile = File(...),
-    pipeline: DocumentIngestionPipeline = Depends(get_ingestion_pipeline),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -76,9 +73,9 @@ def upload_document(
 @limiter.limit("120/minute")
 def list_documents(
     request: Request,
+    repo: DocumentRepositoryDep,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    repo: DocumentRepository = Depends(get_document_repository),
 ):
     docs, total = repo.list_all(skip, limit)
     return DocumentListSchema(
@@ -91,8 +88,8 @@ def list_documents(
 @limiter.limit("120/minute")
 def get_document(
     request: Request,
+    repo: DocumentRepositoryDep,
     document_id: int,
-    repo: DocumentRepository = Depends(get_document_repository),
 ):
     doc = repo.get_by_id(document_id)
     if not doc:
@@ -106,8 +103,8 @@ def get_document(
 @limiter.limit("60/minute")
 def delete_document(
     request: Request,
+    repo: DocumentRepositoryDep,
     document_id: int,
-    repo: DocumentRepository = Depends(get_document_repository),
 ):
     if not repo.delete(document_id):
         raise HTTPException(

@@ -1,4 +1,6 @@
 from collections.abc import Sequence
+from logging import getLogger
+from time import time
 from typing import ClassVar
 
 from langchain_core.embeddings import Embeddings
@@ -14,6 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Document as DocumentModel
+
+logger = getLogger(__name__)
 
 
 class RagService:
@@ -51,7 +55,10 @@ class RagService:
         )
 
     def retrieve(self, query_text: str) -> str:
+        ts = time()
         query_vector: list[float] = self._embeddings_model.embed_query(query_text)
+        te = time()
+        logger.warning("Runtime %s", te - ts)
 
         stmt = (
             select(DocumentModel.content)
@@ -60,11 +67,6 @@ class RagService:
         )
 
         documents: Sequence[str] = self._db_session.scalars(stmt).all()
-        print("*" * 100)
-        print("Retrieved chunks:")
-        print("\n\n".join(documents))
-        print("*" * 100)
-
         return "\n\n".join(documents)
 
     def query(self, query_text: str) -> str:

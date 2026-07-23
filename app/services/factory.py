@@ -1,10 +1,12 @@
+import hashlib
 import logging
-from functools import cache
 
 import httpx
 from fastapi import Depends
+from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.stores import InMemoryStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import SecretStr
 from sqlalchemy.orm import Session
@@ -21,8 +23,14 @@ from app.services.repository import DocumentRepository
 
 logger = logging.getLogger(__name__)
 
+CACHE_NAMESPACE = "rag_cache"
 
-@cache
+
+def _sha256_encoder(key: str) -> str:
+    namespaced_key = f"{CACHE_NAMESPACE}:{key}"
+    return hashlib.sha256(namespaced_key.encode("utf-8")).hexdigest()
+
+
 def _create_embeddings(provider: str, model: str, base_url: str) -> Embeddings:
     if provider == "ollama":
         from langchain_ollama import OllamaEmbeddings
@@ -43,7 +51,6 @@ def _create_embeddings(provider: str, model: str, base_url: str) -> Embeddings:
     raise ValueError(f"Unknown embedding provider: {provider}")
 
 
-@cache
 def _create_llm(provider: str, model: str, base_url: str) -> BaseChatModel:
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -69,7 +76,7 @@ def _ping(url: str) -> bool:
         return False
 
 
-def get_embeddings_provider() -> Embeddings:
+def _get_embeddings_provider() -> Embeddings:
     s = get_settings()
 
     primary = _create_embeddings(
@@ -93,7 +100,7 @@ def get_embeddings_provider() -> Embeddings:
     return primary
 
 
-def get_llm_provider() -> BaseChatModel:
+def create_llm_provider() -> BaseChatModel:
     s = get_settings()
 
     primary = _create_llm(s.LLM_PROVIDER, s.LLM_MODEL, s.LLM_BASE_URL)
@@ -115,13 +122,29 @@ def get_llm_provider() -> BaseChatModel:
     return primary
 
 
-def get_embedding_service() -> DocumentEmbeddingService:
+def create_cache_embeddings_provider() -> Embeddings:
+    underlying_embedder = _get_embeddings_provider()
+
+    # TODO: Will be replaced by Redis in the future.
+    cache_store = InMemoryStore()
+
+    return CacheBackedEmbeddings.from_bytes_store(
+        underlying_embeddings=underlying_embedder,
+        document_embedding_cache=cache_store,
+        query_embedding_cache=True,
+        key_encoder=_sha256_encoder,
+    )
+
+
+def create_embedding_service(
+    embeddings_model: Embeddings,
+) -> DocumentEmbeddingService:
     return DocumentEmbeddingService(
         splitter=RecursiveCharacterTextSplitter(
             chunk_size=get_settings().CHUNK_SIZE,
             chunk_overlap=get_settings().CHUNK_OVERLAP,
         ),
-        embeddings_model=get_embeddings_provider(),
+        embeddings_model=embeddings_model,
     )
 
 
@@ -129,20 +152,24 @@ def get_document_repository(session: Session = Depends(get_db)) -> DocumentRepos
     return DocumentRepository(session=session)
 
 
-def get_ingestion_pipeline(
+def create_ingestion_pipeline(
+    embedding_service: DocumentEmbeddingService,
     repository: DocumentRepository = Depends(get_document_repository),
 ) -> DocumentIngestionPipeline:
     return DocumentIngestionPipeline(
-        embedding_service=get_embedding_service(),
+        embedding_service=embedding_service,
         repository=repository,
         deduplicator=ExactMatchDeduplicator(repository),
     )
 
 
-def get_rag_service(session: Session = Depends(get_db)) -> RagService:
+def create_rag_service(
+    embeddings_model: Embeddings,
+    session: Session,
+) -> RagService:
     return RagService(
         db_session=session,
-        embeddings_model=get_embeddings_provider(),
-        llm=get_llm_provider(),
+        embeddings_model=embeddings_model,
+        llm=create_llm_provider(),
         top_k=get_settings().TOP_K,
     )
