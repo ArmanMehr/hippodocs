@@ -28,7 +28,7 @@ def setup_logging(
 ):
     Path(logfile).parent.mkdir(parents=True, exist_ok=True)
 
-    console_fmt = "%(asctime)s | %(filename)s:%(lineno)d | %(message)s"
+    console_fmt = "%(message)s"
     file_fmt = "%(asctime)s | %(levelname)s | %(filename)s:%(lineno)d | %(message)s"
     datefmt = "%H:%M:%S"
 

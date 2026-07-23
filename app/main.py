@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -9,7 +12,25 @@ from app.limiter import limiter
 from app.routers.ask import router as ask_router
 from app.routers.documents import router as documents_router
 
-app = FastAPI(title="Simple RAG API", version="1.0.0")
+logger = logging.getLogger(__name__)
+
+try:
+    level = getattr(logging, get_settings().LOG_LEVEL)
+except Exception:
+    level = logging.INFO
+setup_logging(level=level)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    logger.info("Starting the RAG API.")
+    try:
+        yield
+    finally:
+        pass
+
+
+app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
@@ -25,18 +46,6 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    import logging
-
-    try:
-        level = getattr(logging, get_settings().LOG_LEVEL)
-    except Exception:
-        level = logging.INFO
-
-    print(level)
-    setup_logging(level=level)
-
-    logger = logging.getLogger(__name__)
-    logger.info("Starting!")
     if get_settings().ENV == "dev":
         import uvicorn
 
