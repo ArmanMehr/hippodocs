@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+
+# Directories
+playground/
+data/
+.ruff_cache/
+.pytest_cache/
+.vscode/
+logs/
+
+
+# Files
+.venv
+.env
+.DS_Store
+uv.lock
