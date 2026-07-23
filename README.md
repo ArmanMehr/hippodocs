@@ -6,6 +6,7 @@ A minimal RAG (Retrieval-Augmented Generation) API built with FastAPI, LangChain
 
 ## To do list
 
+- [ ] Add standard error/exception handling.
 - [ ] Add testing.
 - [ ] Add monitoring and observability.
 - [ ] Add a security layer for PII protection, input sanitization, and output validation.

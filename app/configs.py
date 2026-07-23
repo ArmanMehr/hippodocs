@@ -35,7 +35,7 @@ class Configs(BaseSettings):
     # RAG Settings
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
-    TOP_K: int = 50
+    TOP_K: int = 25
 
     # API
     MAX_FILESIZE: int = 10 * 1024 * 1024

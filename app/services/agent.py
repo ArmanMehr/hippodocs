@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from logging import getLogger
-from time import time
 from typing import ClassVar
 
 from langchain_core.embeddings import Embeddings
@@ -55,10 +54,7 @@ class RagService:
         )
 
     def retrieve(self, query_text: str) -> str:
-        ts = time()
         query_vector: list[float] = self._embeddings_model.embed_query(query_text)
-        te = time()
-        logger.warning("Runtime %s", te - ts)
 
         stmt = (
             select(DocumentModel.content)

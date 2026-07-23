@@ -154,7 +154,7 @@ def get_document_repository(session: Session = Depends(get_db)) -> DocumentRepos
 
 def create_ingestion_pipeline(
     embedding_service: DocumentEmbeddingService,
-    repository: DocumentRepository = Depends(get_document_repository),
+    repository: DocumentRepository,
 ) -> DocumentIngestionPipeline:
     return DocumentIngestionPipeline(
         embedding_service=embedding_service,
