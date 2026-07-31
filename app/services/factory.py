@@ -91,7 +91,11 @@ def _get_embeddings_provider() -> Embeddings:
     fb_model = s.EMBEDDING_FALLBACK_MODEL or s.EMBEDDING_MODEL
     fb_url = s.EMBEDDING_FALLBACK_BASE_URL or s.EMBEDDING_BASE_URL
 
-    if fb_provider != s.EMBEDDING_PROVIDER or fb_model != s.EMBEDDING_MODEL:
+    if (fb_provider, fb_model, fb_url) != (
+        s.EMBEDDING_PROVIDER,
+        s.EMBEDDING_MODEL,
+        s.EMBEDDING_BASE_URL,
+    ):
         fb = _create_embeddings(fb_provider, fb_model, fb_url)
         if _ping(fb_url):
             return fb
@@ -113,7 +117,11 @@ def create_llm_provider() -> BaseChatModel:
     fb_model = s.LLM_FALLBACK_MODEL or s.LLM_MODEL
     fb_url = s.LLM_FALLBACK_BASE_URL or s.LLM_BASE_URL
 
-    if fb_provider != s.LLM_PROVIDER or fb_model != s.LLM_MODEL:
+    if (fb_provider, fb_model, fb_url) != (
+        s.LLM_PROVIDER,
+        s.LLM_MODEL,
+        s.LLM_BASE_URL,
+    ):
         fb = _create_llm(fb_provider, fb_model, fb_url)
         if _ping(fb_url):
             return fb
