@@ -6,10 +6,11 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import TextSplitter
+from sqlalchemy.orm import Session
 
+from app.adapters.repository import DocumentRepository
 from app.models import Document as DocumentModel
 from app.services.embedding import ExactMatchDeduplicator
-from app.services.repository import DocumentRepository
 
 
 class FakeSplitter(TextSplitter):
@@ -67,12 +68,13 @@ class FakeRepository(DocumentRepository):
         self.saved = list(documents)
 
 
-class FakeSession:
+class FakeSession(Session):
     def __init__(self, rows: Sequence[str]) -> None:
         self.rows = list(rows)
         self.last_stmt: object | None = None
 
-    def scalars(self, stmt: object) -> SimpleNamespace:
+    @override
+    def scalars(self, stmt: object) -> SimpleNamespace:  # type: ignore[override]
         self.last_stmt = stmt
         return SimpleNamespace(all=lambda: list(self.rows))
 

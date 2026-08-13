@@ -2,8 +2,8 @@ from langchain_core.documents import Document
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from app.adapters.repository import SQLAlchemyDocumentRepository
 from app.services.embedding import DocumentEmbeddingService, DocumentIngestionPipeline
-from app.services.repository import DocumentRepository
 from tests.conftest import (
     FakeDeduplicator,
     FakeEmbeddingModel,
@@ -43,7 +43,7 @@ def test_ingestion_pipeline_runs_split_dedup_embed_and_save(
     )
     repo = fake_repository(mocker.MagicMock(spec=Session))
     deduplicator = fake_deduplicator(
-        kept_docs, repo_mock=mocker.MagicMock(spec=DocumentRepository)
+        kept_docs, repo_mock=mocker.MagicMock(spec=SQLAlchemyDocumentRepository)
     )
     pipeline = DocumentIngestionPipeline(
         embedding_service=embed_service,

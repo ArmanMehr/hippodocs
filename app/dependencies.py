@@ -5,6 +5,7 @@ from langchain.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from sqlalchemy.orm import Session
 
+from app.adapters.repository import DocumentRepository
 from app.configs import get_settings
 from app.database import get_db
 from app.services.agent import RagService
@@ -14,7 +15,6 @@ from app.services.embedding import (
     ExactMatchDeduplicator,
 )
 from app.services.factory import get_document_repository
-from app.services.repository import DocumentRepository
 
 
 def _get_llm_provider(request: Request) -> BaseChatModel:
@@ -40,12 +40,9 @@ def _get_ingestion_pipeline(
     )
 
 
-def _get_rag_service(
-    request: Request,
-    session: Session = Depends(get_db),
-) -> RagService:
+def _get_rag_service(request: Request, repository: DocumentRepository) -> RagService:
     return RagService(
-        db_session=session,
+        repository=repository,
         embeddings_model=request.app.state.cache_embeddings,
         llm=request.app.state.llm_provider,
         top_k=get_settings().TOP_K,

@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Optional
+from typing import Protocol
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -7,7 +7,23 @@ from sqlalchemy.orm import Session
 from app.models import Document
 
 
-class DocumentRepository:
+class DocumentRepository(Protocol):
+    _session: Session
+
+    def get_existing_contents(self, contents: Sequence[str]) -> set[str]: ...
+
+    def save_all(self, documents: Sequence[Document]) -> None: ...
+
+    def list_all(self, skip: int, limit: int) -> tuple[Sequence[Document], int]: ...
+
+    def get_by_id(self, document_id: int) -> Document | None: ...
+
+    def find_similar(self, query_vector: list[float], top_k: int) -> Sequence[str]: ...
+
+    def delete(self, document_id: int) -> bool: ...
+
+
+class SQLAlchemyDocumentRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
@@ -32,8 +48,16 @@ class DocumentRepository:
         docs = self._session.scalars(select(Document).offset(skip).limit(limit)).all()
         return docs, total
 
-    def get_by_id(self, document_id: int) -> Optional[Document]:
+    def get_by_id(self, document_id: int) -> Document | None:
         return self._session.get(Document, document_id)
+
+    def find_similar(self, query_vector: list[float], top_k: int) -> Sequence[str]:
+        stmt = (
+            select(Document.content)
+            .order_by(Document.embedding.cosine_distance(query_vector))
+            .limit(top_k)
+        )
+        return self._session.scalars(stmt).all()
 
     def delete(self, document_id: int) -> bool:
         doc = self.get_by_id(document_id)

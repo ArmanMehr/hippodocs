@@ -15,7 +15,7 @@ SessionLocal = sessionmaker(
 )
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     session = SessionLocal()
     try:
         yield session

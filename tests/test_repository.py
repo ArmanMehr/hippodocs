@@ -2,9 +2,9 @@ from langchain_core.documents import Document
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from app.adapters.repository import SQLAlchemyDocumentRepository
 from app.models import Document as DocumentModel
 from app.services.embedding import ExactMatchDeduplicator
-from app.services.repository import DocumentRepository
 
 
 def test_get_existing_contents_returns_lowercased_matches(mocker: MockerFixture):
@@ -13,7 +13,7 @@ def test_get_existing_contents_returns_lowercased_matches(mocker: MockerFixture)
     result.scalars.return_value.all.return_value = ["Alpha", "beta"]
     session.execute.return_value = result
 
-    repo = DocumentRepository(session)
+    repo = SQLAlchemyDocumentRepository(session)
 
     assert repo.get_existing_contents(["ALPHA", "beta", "missing"]) == {
         "alpha",
@@ -24,7 +24,7 @@ def test_get_existing_contents_returns_lowercased_matches(mocker: MockerFixture)
 
 def test_save_all_commits_documents(mocker: MockerFixture):
     session = mocker.MagicMock(spec=Session)
-    repo = DocumentRepository(session)
+    repo = SQLAlchemyDocumentRepository(session)
     docs = [DocumentModel(content="hello", embedding=[1.0, 2.0, 3.0])]
 
     repo.save_all(docs)
@@ -35,7 +35,7 @@ def test_save_all_commits_documents(mocker: MockerFixture):
 
 def test_list_all_returns_docs_and_total(mocker: MockerFixture):
     session = mocker.MagicMock(spec=Session)
-    repo = DocumentRepository(session)
+    repo = SQLAlchemyDocumentRepository(session)
     docs = [DocumentModel(content="hello", embedding=[1.0, 2.0, 3.0])]
     session.scalar.return_value = 1
     session.scalars.return_value.all.return_value = docs
@@ -50,7 +50,7 @@ def test_list_all_returns_docs_and_total(mocker: MockerFixture):
 
 def test_delete_returns_false_when_missing(mocker: MockerFixture):
     session = mocker.MagicMock(spec=Session)
-    repo = DocumentRepository(session)
+    repo = SQLAlchemyDocumentRepository(session)
     session.get.return_value = None
 
     assert repo.delete(123) is False
@@ -60,7 +60,7 @@ def test_delete_returns_false_when_missing(mocker: MockerFixture):
 
 def test_delete_removes_document_when_found(mocker: MockerFixture):
     session = mocker.MagicMock(spec=Session)
-    repo = DocumentRepository(session)
+    repo = SQLAlchemyDocumentRepository(session)
     doc = DocumentModel(content="hello", embedding=[1.0, 2.0, 3.0])
     session.get.return_value = doc
 
@@ -72,7 +72,7 @@ def test_delete_removes_document_when_found(mocker: MockerFixture):
 def test_deduplicator_filters_existing_contents_case_insensitively(
     mocker: MockerFixture,
 ):
-    repo = mocker.MagicMock(spec=DocumentRepository)
+    repo = mocker.MagicMock(spec=SQLAlchemyDocumentRepository)
     repo.get_existing_contents.return_value = {"alpha"}
     deduplicator = ExactMatchDeduplicator(repo)
     docs = [

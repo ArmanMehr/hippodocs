@@ -7,10 +7,13 @@ from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.stores import InMemoryStore
+from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
+from app.adapters.repository import DocumentRepository, SQLAlchemyDocumentRepository
 from app.configs import get_settings
 from app.database import get_db
 from app.services.agent import RagService
@@ -19,7 +22,6 @@ from app.services.embedding import (
     DocumentIngestionPipeline,
     ExactMatchDeduplicator,
 )
-from app.services.repository import DocumentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +35,10 @@ def _sha256_encoder(key: str) -> str:
 
 def _create_embeddings(provider: str, model: str, base_url: str) -> Embeddings:
     if provider == "ollama":
-        from langchain_ollama import OllamaEmbeddings
-
         return OllamaEmbeddings(
             model=model, base_url=base_url, dimensions=get_settings().DIMENSIONS
         )
     if provider == "openai":
-        from langchain_openai import OpenAIEmbeddings
-
         return OpenAIEmbeddings(
             model=model,
             base_url=base_url,
@@ -156,8 +154,10 @@ def create_embedding_service(
     )
 
 
-def get_document_repository(session: Session = Depends(get_db)) -> DocumentRepository:
-    return DocumentRepository(session=session)
+def get_document_repository(
+    session: Session = Depends(get_db),
+) -> DocumentRepository:
+    return SQLAlchemyDocumentRepository(session=session)
 
 
 def create_ingestion_pipeline(
@@ -172,11 +172,10 @@ def create_ingestion_pipeline(
 
 
 def create_rag_service(
-    embeddings_model: Embeddings,
-    session: Session,
+    embeddings_model: Embeddings, repository: DocumentRepository
 ) -> RagService:
     return RagService(
-        db_session=session,
+        repository=repository,
         embeddings_model=embeddings_model,
         llm=create_llm_provider(),
         top_k=get_settings().TOP_K,

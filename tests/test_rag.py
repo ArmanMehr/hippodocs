@@ -1,5 +1,6 @@
 from pytest_mock import MockerFixture
 
+from app.adapters.repository import SQLAlchemyDocumentRepository
 from app.services.agent import RagService
 from tests.conftest import FakeEmbeddingModel, FakeSession
 
@@ -12,8 +13,9 @@ def test_rag_service_retrieve_uses_embeddings_and_session(
     embeddings = fake_embeddings()
     session = fake_session(["Doc A", "Doc B"])
     llm = mocker.MagicMock()
+    repo = SQLAlchemyDocumentRepository(session)
     service = RagService(
-        db_session=session,  # type: ignore[arg-type]
+        repository=repo,
         embeddings_model=embeddings,
         llm=llm,
         top_k=2,

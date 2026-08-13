@@ -1,11 +1,11 @@
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import TextSplitter
 
+from app.adapters.repository import DocumentRepository
 from app.models import Document as DocumentModel
-from app.services.repository import DocumentRepository
 
 
 class ExactMatchDeduplicator:
@@ -51,7 +51,7 @@ class DocumentIngestionPipeline:
         self,
         embedding_service: DocumentEmbeddingService,
         repository: DocumentRepository,
-        deduplicator: Optional[ExactMatchDeduplicator] = None,
+        deduplicator: ExactMatchDeduplicator | None = None,
     ) -> None:
         self._embedding_service = embedding_service
         self._repository = repository

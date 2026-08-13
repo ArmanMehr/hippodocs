@@ -11,10 +11,8 @@ from langchain_core.runnables import (
     RunnableParallel,
     RunnablePassthrough,
 )
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.models import Document as DocumentModel
+from app.adapters.repository import DocumentRepository
 
 logger = getLogger(__name__)
 
@@ -29,13 +27,13 @@ class RagService:
 
     def __init__(
         self,
-        db_session: Session,
+        repository: DocumentRepository,
         embeddings_model: Embeddings,
         llm: BaseChatModel,
         top_k: int,
         chat_prompt: ChatPromptTemplate | None = None,
     ) -> None:
-        self._db_session = db_session
+        self._repository = repository
         self._embeddings_model = embeddings_model
         self._llm = llm
         self._top_k = top_k
@@ -55,14 +53,9 @@ class RagService:
 
     def retrieve(self, query_text: str) -> str:
         query_vector: list[float] = self._embeddings_model.embed_query(query_text)
-
-        stmt = (
-            select(DocumentModel.content)
-            .order_by(DocumentModel.embedding.cosine_distance(query_vector))
-            .limit(self._top_k)
+        documents: Sequence[str] = self._repository.find_similar(
+            query_vector, self._top_k
         )
-
-        documents: Sequence[str] = self._db_session.scalars(stmt).all()
         return "\n\n".join(documents)
 
     def query(self, query_text: str) -> str:
