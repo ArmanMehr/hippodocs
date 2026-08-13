@@ -40,7 +40,9 @@ def _get_ingestion_pipeline(
     )
 
 
-def _get_rag_service(request: Request, repository: DocumentRepository) -> RagService:
+def _get_rag_service(
+    request: Request, repository: DocumentRepository = Depends(get_document_repository)
+) -> RagService:
     return RagService(
         repository=repository,
         embeddings_model=request.app.state.cache_embeddings,
