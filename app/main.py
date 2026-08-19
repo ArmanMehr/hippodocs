@@ -7,32 +7,30 @@ from slowapi.errors import RateLimitExceeded
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import setup_logging
+from app.adapters.orm import start_mappers
 from app.configs import get_settings
 from app.limiter import limiter
 from app.routers.ask import router as ask_router
-from app.routers.documents import router as documents_router
+from app.routers.workspaces import router as documents_router
 from app.services.factory import (
-    create_cache_embeddings_provider,
-    create_embedding_service,
-    create_llm_provider,
+    create_ingestion_service,
+    create_rag_service,
+    create_workspace_service,
 )
 
-logger = logging.getLogger(__name__)
-
-try:
-    level = getattr(logging, get_settings().LOG_LEVEL)
-except Exception:
-    level = logging.INFO
+level = getattr(logging, get_settings().LOG_LEVEL)
 setup_logging(level=level)
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting the RAG API.")
-    cache_embeddings = create_cache_embeddings_provider()
-    app.state.llm_provider = create_llm_provider()
-    app.state.cache_embeddings = cache_embeddings
-    app.state.embedding_service = create_embedding_service(cache_embeddings)
+    start_mappers()
+    app.state.ingestion_service = create_ingestion_service()
+    app.state.rag_service = create_rag_service()
+    app.state.workspace_service = create_workspace_service()
     try:
         yield
     finally:

@@ -8,7 +8,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app import models
+from app.adapters.orm import metadata
 from app.configs import get_settings
 
 # this is the Alembic Config object, which provides
@@ -17,7 +17,7 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-config.set_main_option("sqlalchemy.url", str(get_settings().DATABASE_URL))
+config.set_main_option("sqlalchemy.url", get_settings().DATABASE_URL)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -25,7 +25,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = models.Base.metadata
+target_metadata = metadata
 
 
 # other values from the config, defined by the needs of env.py,

@@ -1,67 +1,54 @@
-import hashlib
 import logging
 
 import httpx
-from fastapi import Depends
-from langchain_classic.embeddings.cache import CacheBackedEmbeddings
-from langchain_core.embeddings import Embeddings
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.stores import InMemoryStore
-from langchain_ollama import OllamaEmbeddings
-from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pydantic import SecretStr
-from sqlalchemy.orm import Session
 
-from app.adapters.repository import DocumentRepository, SQLAlchemyDocumentRepository
-from app.configs import get_settings
-from app.database import get_db
-from app.services.agent import RagService
-from app.services.embedding import (
-    DocumentEmbeddingService,
-    DocumentIngestionPipeline,
-    ExactMatchDeduplicator,
+from app.adapters.llm import LangChainOpenAILLMChat
+from app.adapters.text_embedder import (
+    LangchainEmbedder,
+    LangChainInMemoryCacheBackedEmbedder,
+    LangChainOllamaTextEmbedder,
+    LangChainOpenAITextEmbedder,
 )
+from app.adapters.text_splitter import LangChainRecursiveTextSplitter
+from app.configs import get_settings
+from app.services.ports import LLMChat, TextEmbedder, TextSplitter
+from app.services.rag_service import (
+    DocumentIngestionService,
+    RagService,
+    WorkspaceService,
+)
+from app.services.uow import SQLAlchemyUnitOfWork, UnitOfWork
 
 logger = logging.getLogger(__name__)
 
-CACHE_NAMESPACE = "rag_cache"
 
-
-def _sha256_encoder(key: str) -> str:
-    namespaced_key = f"{CACHE_NAMESPACE}:{key}"
-    return hashlib.sha256(namespaced_key.encode("utf-8")).hexdigest()
-
-
-def _create_embeddings(provider: str, model: str, base_url: str) -> Embeddings:
+def _create_langchain_embedder(
+    provider: str, model_id: str, base_url: str, dimensions: int
+) -> LangchainEmbedder:
     if provider == "ollama":
-        return OllamaEmbeddings(
-            model=model, base_url=base_url, dimensions=get_settings().DIMENSIONS
+        embedder: LangchainEmbedder = LangChainOllamaTextEmbedder(
+            model_id=model_id, base_url=base_url, dimensions=dimensions
         )
-    if provider == "openai":
-        return OpenAIEmbeddings(
-            model=model,
+    elif provider == "openai":
+        embedder: LangchainEmbedder = LangChainOpenAITextEmbedder(
+            model_id=model_id,
             base_url=base_url,
-            api_key=SecretStr(get_settings().OPENAI_API_KEY),
-            dimensions=get_settings().DIMENSIONS,
-            check_embedding_ctx_length=False,
+            api_key=get_settings().OPENAI_API_KEY,
+            dimensions=dimensions,
         )
-    raise ValueError(f"Unknown embedding provider: {provider}")
+    else:
+        raise ValueError(f"Unknown embedding provider: {provider}")
+
+    return LangChainInMemoryCacheBackedEmbedder(embedder)
 
 
-def _create_llm(provider: str, model: str, base_url: str) -> BaseChatModel:
-    if provider == "ollama":
-        from langchain_ollama import ChatOllama
-
-        return ChatOllama(model=model, base_url=base_url)
+def _create_llm(provider: str, model_id: str, base_url: str) -> LLMChat:
     if provider == "openai":
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(
-            model=model,
+        return LangChainOpenAILLMChat(
+            model_id=model_id,
             base_url=base_url,
-            api_key=SecretStr(get_settings().OPENAI_API_KEY),
-            max_retries=get_settings().LLM_MAX_RETRIES,
+            api_key=get_settings().OPENAI_API_KEY,
+            max_retries=10,
         )
     raise ValueError(f"Unknown LLM provider: {provider}")
 
@@ -74,11 +61,11 @@ def _ping(url: str) -> bool:
         return False
 
 
-def _get_embeddings_provider() -> Embeddings:
+def create_text_embedder() -> TextEmbedder:
     s = get_settings()
 
-    primary = _create_embeddings(
-        s.EMBEDDING_PROVIDER, s.EMBEDDING_MODEL, s.EMBEDDING_BASE_URL
+    primary = _create_langchain_embedder(
+        s.EMBEDDING_PROVIDER, s.EMBEDDING_MODEL, s.EMBEDDING_BASE_URL, s.DIMENSIONS
     )
     if _ping(s.EMBEDDING_BASE_URL):
         return primary
@@ -94,7 +81,7 @@ def _get_embeddings_provider() -> Embeddings:
         s.EMBEDDING_MODEL,
         s.EMBEDDING_BASE_URL,
     ):
-        fb = _create_embeddings(fb_provider, fb_model, fb_url)
+        fb = _create_langchain_embedder(fb_provider, fb_model, fb_url, s.DIMENSIONS)
         if _ping(fb_url):
             return fb
 
@@ -102,7 +89,7 @@ def _get_embeddings_provider() -> Embeddings:
     return primary
 
 
-def create_llm_provider() -> BaseChatModel:
+def create_llm_chat() -> LLMChat:
     s = get_settings()
 
     primary = _create_llm(s.LLM_PROVIDER, s.LLM_MODEL, s.LLM_BASE_URL)
@@ -128,55 +115,33 @@ def create_llm_provider() -> BaseChatModel:
     return primary
 
 
-def create_cache_embeddings_provider() -> Embeddings:
-    underlying_embedder = _get_embeddings_provider()
-
-    # TODO: Will be replaced by Redis in the future.
-    cache_store = InMemoryStore()
-
-    return CacheBackedEmbeddings.from_bytes_store(
-        underlying_embeddings=underlying_embedder,
-        document_embedding_cache=cache_store,
-        query_embedding_cache=True,
-        key_encoder=_sha256_encoder,
+def create_text_splitter() -> TextSplitter:
+    s = get_settings()
+    return LangChainRecursiveTextSplitter(
+        chunk_size=s.CHUNK_SIZE, chunk_overlap=s.CHUNK_OVERLAP
     )
 
 
-def create_embedding_service(
-    embeddings_model: Embeddings,
-) -> DocumentEmbeddingService:
-    return DocumentEmbeddingService(
-        splitter=RecursiveCharacterTextSplitter(
-            chunk_size=get_settings().CHUNK_SIZE,
-            chunk_overlap=get_settings().CHUNK_OVERLAP,
-        ),
-        embeddings_model=embeddings_model,
+def create_uow() -> UnitOfWork:
+    return SQLAlchemyUnitOfWork()
+
+
+def create_ingestion_service() -> DocumentIngestionService:
+    return DocumentIngestionService(
+        uow=create_uow(),
+        splitter=create_text_splitter(),
+        embedder=create_text_embedder(),
     )
 
 
-def get_document_repository(
-    session: Session = Depends(get_db),
-) -> DocumentRepository:
-    return SQLAlchemyDocumentRepository(session=session)
-
-
-def create_ingestion_pipeline(
-    embedding_service: DocumentEmbeddingService,
-    repository: DocumentRepository,
-) -> DocumentIngestionPipeline:
-    return DocumentIngestionPipeline(
-        embedding_service=embedding_service,
-        repository=repository,
-        deduplicator=ExactMatchDeduplicator(repository),
-    )
-
-
-def create_rag_service(
-    embeddings_model: Embeddings, repository: DocumentRepository
-) -> RagService:
+def create_rag_service() -> RagService:
     return RagService(
-        repository=repository,
-        embeddings_model=embeddings_model,
-        llm=create_llm_provider(),
+        uow=create_uow(),
+        embedder=create_text_embedder(),
+        llm=create_llm_chat(),
         top_k=get_settings().TOP_K,
     )
+
+
+def create_workspace_service() -> WorkspaceService:
+    return WorkspaceService(uow=create_uow())
