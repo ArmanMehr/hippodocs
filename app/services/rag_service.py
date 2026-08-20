@@ -18,10 +18,6 @@ DEFAULT_RAG_PROMPT_TEMPLATE = LangchainPromptTemplate(
 )
 
 
-class UnknownWorkspaceError(KeyError):
-    pass
-
-
 class WorkspaceService:
     def __init__(self, uow: UnitOfWork) -> None:
         self.uow = uow
@@ -146,8 +142,8 @@ class RagService:
         self.chat_prompt = chat_prompt
 
     def _retrieve(self, workspace_id: int, query_text: str) -> str:
-        # FIX: We don't have error handling for non-existing workspace with workspace_id.
         with self.uow:
+            self.uow.workspaces.get(workspace_id)
             query_embedding = self.embedder.embed_query(query_text)
             found_chunks = self.uow.chunks.find_similar_in_workspace(
                 workspace_id=workspace_id,
