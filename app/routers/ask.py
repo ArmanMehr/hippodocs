@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.adapters.repository import UnknownWorkspaceError
 from app.limiter import limiter
 from app.schemas import AskChatSchema, ChatResponseSchema
+from app.services.rag_service import UnknownWorkspaceError
 
 router = APIRouter(prefix="/ask", tags=["ask"])
 

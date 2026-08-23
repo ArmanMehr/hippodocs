@@ -10,7 +10,6 @@ from fastapi import (
 )
 
 from app.adapters.loader import load_pdf
-from app.adapters.repository import UnknownWorkspaceError
 from app.configs import get_settings
 from app.limiter import limiter
 from app.schemas import (
@@ -19,6 +18,7 @@ from app.schemas import (
     WorkspaceListSchema,
     WorkspaceSchema,
 )
+from app.services.rag_service import UnknownWorkspaceError
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 

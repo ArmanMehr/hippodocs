@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Self
 
 
@@ -21,7 +21,7 @@ class Content:
 
 @dataclass
 class Workspace:
-    name: str | None = None
+    name: str = field(default="Untitled Workspace")
 
     @property
     def attribures(self) -> tuple[str, ...]:

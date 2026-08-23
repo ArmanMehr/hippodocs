@@ -89,8 +89,7 @@ def test_workspace_delete_removes(
     session.commit()
     workspace_repo.delete(ws.workspace_id)  # type: ignore
     session.commit()
-    with pytest.raises(KeyError):
-        workspace_repo.get(ws.workspace_id)  # type: ignore
+    assert workspace_repo.get(ws.workspace_id) is None  # type: ignore
 
 
 def test_document_add_assigns_id(
@@ -144,8 +143,7 @@ def test_document_delete_removes(
 ):
     document_repo.delete(document.document_id)  # type: ignore
     session.commit()
-    with pytest.raises(KeyError):
-        document_repo.get(document.document_id)  # type: ignore
+    assert document_repo.get(document.document_id) is None  # type: ignore
 
 
 def test_delete_workspace_cascades_documents(

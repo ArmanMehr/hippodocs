@@ -42,9 +42,34 @@ def test_add_embedding_chunk():
     assert chunk.embedding_vector == [1.0, 2.0, 3.0]
 
 
+def test_set_embedding_chunk():
+    chunk = Chunk(document_id=1, content=Content("text"))
+    chunk.embedding = Embedding((1.0, 2.0, 3.0))
+
+    assert chunk.has_embedding()
+    assert chunk.embedding_vector == [1.0, 2.0, 3.0]
+
+
+def test_zero_dim_empty_embedding_chunk():
+    chunk = Chunk(document_id=1, content=Content("text"))
+
+    assert not chunk.has_embedding()
+    assert chunk.ndim == 0
+
+
+def test_document_mark_preprocessed_functionality():
+    ws = Workspace(name="ws")
+    doc = Document(content=Content("Text"), workspace=ws, title="doc")
+
+    doc.mark_preprocessed()
+    assert doc.is_preprocessed
+
+
 def test_document_no_chunks():
     ws = Workspace(name="ws")
     doc = Document(content=Content("Text"), workspace=ws, title="doc")
+
     assert not doc.is_preprocessed
+
     doc.mark_preprocessed()
     assert doc.is_preprocessed

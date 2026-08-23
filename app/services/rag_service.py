@@ -8,6 +8,19 @@ from app.services.uow import UnitOfWork
 
 logger = getLogger(__name__)
 
+
+class UnknownWorkspaceError(KeyError):
+    pass
+
+
+class UnknownDocumentError(KeyError):
+    pass
+
+
+class UnknownChunkError(KeyError):
+    pass
+
+
 DEFAULT_RAG_PROMPT_TEMPLATE = LangchainPromptTemplate(
     """
     Answer the question based only on the following context:
@@ -38,9 +51,8 @@ class WorkspaceService:
     ) -> int | None:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
-            if not workspace:
-                logger.warning(f"Workspace with ID {workspace_id} not found.")
-                return None
+            if workspace is None:
+                raise UnknownWorkspaceError(workspace_id)
 
             document = Document(content=Content(text), workspace=workspace, title=title)
             self.uow.documents.add(document)
@@ -60,8 +72,7 @@ class WorkspaceService:
 
     def get_workspace(self, workspace_id: int) -> Workspace | None:
         with self.uow:
-            workspace = self.uow.workspaces.get(workspace_id)
-        return workspace
+            return self.uow.workspaces.get(workspace_id)
 
     def list_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
         return self.get_workspaces(skip=skip, limit=limit)
@@ -83,9 +94,8 @@ class DocumentIngestionService:
     def ingest_document(self, document_id: int) -> None:
         with self.uow:
             document = self.uow.documents.get(document_id=document_id)
-            if not document:
-                logger.warning(f"Document with ID {document_id} not found.")
-                return
+            if document is None:
+                raise UnknownDocumentError
 
             contents = self.splitter.split_text(document.content.value)
             if not contents:
@@ -143,7 +153,9 @@ class RagService:
 
     def _retrieve(self, workspace_id: int, query_text: str) -> str:
         with self.uow:
-            self.uow.workspaces.get(workspace_id)
+            workspace = self.uow.workspaces.get(workspace_id)
+            if workspace is None:
+                raise UnknownWorkspaceError(workspace_id)
             query_embedding = self.embedder.embed_query(query_text)
             found_chunks = self.uow.chunks.find_similar_in_workspace(
                 workspace_id=workspace_id,

@@ -8,18 +8,10 @@ from app.adapters.orm import chunks_table, documents_table, workspaces_table
 from app.domain.models import Chunk, Document, Workspace
 
 
-class UnknownWorkspaceError(KeyError):
-    pass
-
-
-class UnknownDocumentError(KeyError):
-    pass
-
-
 class WorkspaceRepository(Protocol):
     def add(self, workspace: Workspace) -> None: ...
 
-    def get(self, workspace_id: int) -> Workspace: ...
+    def get(self, workspace_id: int) -> Workspace | None: ...
 
     def get_all(self, skip: int, limit: int) -> tuple[list[Workspace], int]: ...
 
@@ -31,7 +23,7 @@ class WorkspaceRepository(Protocol):
 class DocumentRepository(Protocol):
     def add(self, document: Document) -> None: ...
 
-    def get(self, document_id: int) -> Document: ...
+    def get(self, document_id: int) -> Document | None: ...
 
     def list_by_workspace(self, workspace_id: int) -> Sequence[Document]: ...
 
@@ -45,7 +37,7 @@ class DocumentRepository(Protocol):
 class ChunkRepository(Protocol):
     def save_all(self, chunks: Sequence[Chunk]) -> None: ...
 
-    def get(self, chunk_id: int) -> Chunk: ...
+    def get(self, chunk_id: int) -> Chunk | None: ...
 
     def find_similar_in_workspace(
         self, workspace_id: int, query_vector: Sequence[float], top_k: int
@@ -63,12 +55,9 @@ class SQLAlchemyWorkspaceRepository:
     def add(self, workspace: Workspace) -> None:
         self._session.add(workspace)
 
-    def get(self, workspace_id: int) -> Workspace:
+    def get(self, workspace_id: int) -> Workspace | None:
         stmt = select(Workspace).where(workspaces_table.c.workspace_id == workspace_id)
-        ws = self._session.scalar(stmt)
-        if ws is None:
-            raise UnknownWorkspaceError(workspace_id)
-        return ws
+        return self._session.scalar(stmt)
 
     def get_all(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
         stmt = (
@@ -88,12 +77,15 @@ class SQLAlchemyWorkspaceRepository:
 
     def update(self, workspace_id: int, new_workspace: Workspace) -> None:
         ws = self.get(workspace_id)
+        if ws is None:
+            return
         for attr in new_workspace.attribures:
             setattr(ws, attr, getattr(new_workspace, attr))
 
     def delete(self, workspace_id: int) -> None:
         ws = self.get(workspace_id)
-        self._session.delete(ws)
+        if ws is not None:
+            self._session.delete(ws)
 
 
 class SQLAlchemyDocumentRepository:
@@ -103,12 +95,9 @@ class SQLAlchemyDocumentRepository:
     def add(self, document: Document) -> None:
         self._session.add(document)
 
-    def get(self, document_id: int) -> Document:
+    def get(self, document_id: int) -> Document | None:
         stmt = select(Document).where(documents_table.c.document_id == document_id)
-        doc = self._session.scalar(stmt)
-        if doc is None:
-            raise UnknownDocumentError(document_id)
-        return doc
+        return self._session.scalar(stmt)
 
     def list_by_workspace(self, workspace_id: int) -> Sequence[Document]:
         stmt = select(Document).where(documents_table.c.workspace_id == workspace_id)
@@ -125,7 +114,8 @@ class SQLAlchemyDocumentRepository:
 
     def delete(self, document_id: int) -> None:
         doc = self.get(document_id)
-        self._session.delete(doc)
+        if doc is not None:
+            self._session.delete(doc)
 
 
 class SQLAlchemyChunkRepository:
@@ -135,12 +125,9 @@ class SQLAlchemyChunkRepository:
     def save_all(self, chunks: Sequence[Chunk]) -> None:
         self._session.add_all(chunks)
 
-    def get(self, chunk_id: int) -> Chunk:
+    def get(self, chunk_id: int) -> Chunk | None:
         stmt = select(Chunk).where(chunks_table.c.chunk_id == chunk_id)
-        chunk = self._session.scalar(stmt)
-        if chunk is None:
-            raise KeyError(chunk_id)
-        return chunk
+        return self._session.scalar(stmt)
 
     def find_similar_in_document(
         self, document_id: int, query_vector: Sequence[float], top_k: int
