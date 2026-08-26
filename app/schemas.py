@@ -32,7 +32,6 @@ class AddDocumentResponseSchema(BaseModel):
 
 
 class AskChatSchema(BaseModel):
-    workspace_id: int
     question: str = Field(min_length=1, max_length=5_000)
 
 

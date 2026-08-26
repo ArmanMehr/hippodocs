@@ -9,11 +9,10 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import setup_logging
 from app.adapters.orm import start_mappers
+from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
 from app.exceptions import AppError, error_payload
 from app.limiter import limiter
-from app.routers.ask import router as ask_router
-from app.routers.workspaces import router as documents_router
 from app.services.factory import (
     create_file_readers,
     create_ingestion_service,
@@ -54,8 +53,7 @@ async def app_error_handler(_request: Request, exception: AppError) -> JSONRespo
     )
 
 
-app.include_router(documents_router)
-app.include_router(ask_router)
+app.include_router(api_v1_router)
 
 
 @app.get("/health", tags=["Health"])
