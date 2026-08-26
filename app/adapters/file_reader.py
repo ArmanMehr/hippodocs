@@ -3,14 +3,12 @@ from liteparse import LiteParse
 from app.exceptions import NoExtractableText, UnsupportedFileType
 from app.services.ports import FileReader
 
-_PDF_MAGIC = b"%PDF-"
-
 
 class PdfReader:
     def validate(self, content: bytes, header: bytes) -> None:
         if not content:
             raise UnsupportedFileType("Empty file")
-        if not header.startswith(_PDF_MAGIC):
+        if not header.startswith(b"%PDF-"):
             raise UnsupportedFileType("Only PDF files are supported")
 
     def read(self, content: bytes) -> str:
