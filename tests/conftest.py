@@ -12,18 +12,18 @@ from app.adapters.repository import (
     DocumentRepository,
     WorkspaceRepository,
 )
-
-# Add these imports at the top
 from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.services.uow import UnitOfWork
 
 
 @pytest.fixture
-def in_memory_db() -> Engine:
+def in_memory_db() -> Generator[Engine]:
     engine = create_engine("sqlite:///:memory:")
     with engine.connect() as conn:
         conn.execute(text("PRAGMA foreign_keys = ON"))
     metadata.create_all(engine)
-    return engine
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture
@@ -34,8 +34,31 @@ def session_factory(in_memory_db: Engine) -> Generator[sessionmaker[Session]]:
 
 
 @pytest.fixture
-def session(session_factory: sessionmaker[Session]) -> Session:
-    return session_factory()
+def session(session_factory: sessionmaker[Session]) -> Generator[Session]:
+    session = session_factory()
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def uow() -> UnitOfWork:
+    return FakeUnitOfWork()
+
+
+def seed_workspace(uow: UnitOfWork) -> int:
+    workspace = Workspace()
+    with uow:
+        uow.workspaces.add(workspace)
+        uow.commit()
+        return workspace.workspace_id  # type: ignore[attr-defined]
+
+
+def seed_document(uow: UnitOfWork, text: str) -> int:
+    document = Document(content=Content(text), workspace=Workspace())
+    with uow:
+        uow.documents.add(document)
+        uow.commit()
+        return document.document_id  # type: ignore[attr-defined]
 
 
 class FakeWorkspaceRepository:
@@ -81,7 +104,8 @@ class FakeDocumentRepository:
         return [
             doc
             for doc in self._documents.values()
-            if doc.workspace and getattr(doc.workspace, "workspace_id", None) == workspace_id
+            if doc.workspace
+            and getattr(doc.workspace, "workspace_id", None) == workspace_id
         ]
 
     def list_unpreprocessed_by_workspace(self, workspace_id: int) -> Sequence[Document]:
@@ -127,6 +151,9 @@ class FakeChunkRepository:
         chunks = [c for c in self._chunks.values() if c.embedding_vector is not None]
         return chunks[:top_k]
 
+    def _get_all(self):
+        return self._chunks
+
 
 class FakeUnitOfWork:
     workspaces: WorkspaceRepository
@@ -156,25 +183,35 @@ class FakeUnitOfWork:
 
 
 class FakeSplitter:
-    def split(self, text: str) -> list[Content]:
+    def split_text(self, text: str) -> list[Content]:
         return [
             Content(value=chunk.strip()) for chunk in text.split(".") if chunk.strip()
         ]
 
 
 class FakeEmbedder:
-    def embed(self, text: str) -> Embedding:
+    def __init__(self):
+        self.model_id = "model_id"
+
+    def _embed(self, text: str) -> Embedding:
         _ = text
-        return Embedding(vector=tuple([0.1] * 10), model_id="test-llama2")
+        return Embedding(vector=tuple([0.1] * 2), model_id="test-llama2")
+
+    def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
+        return [self._embed(t) for t in texts]
+
+    def embed_query(self, text: str) -> Embedding:
+        return self._embed(text)
 
 
-class LLMChat:
+class FakeLLMChat:
     def __init__(self, model_id: str = ""):
         self.model_id = model_id
+        self.prompts: list[str] = []
 
     def invoke(self, query: str) -> str:
-        _ = query
-        return ""
+        self.prompts.append(query)
+        return "Answer"
 
 
 class FakePromptTemplate:

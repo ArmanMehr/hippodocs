@@ -110,6 +110,9 @@ class DocumentIngestionService:
 
     def ingest_workspace(self, workspace_id: int) -> None:
         with self.uow:
+            if self.uow.workspaces.get(workspace_id) is None:
+                raise UnknownWorkspaceError(workspace_id)
+
             documents: Sequence[Document] = (
                 self.uow.documents.list_unpreprocessed_by_workspace(workspace_id)
             )

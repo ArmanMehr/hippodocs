@@ -11,16 +11,29 @@ from app.domain.models import (
 )
 
 
-def test_empty_content():
-    with pytest.raises(EmptyContentError):
-        Content("")
+def make_chunk() -> Chunk:
+    return Chunk(document_id=1, content=Content("text"))
 
+
+def make_document() -> Document:
+    return Document(
+        content=Content("Text"), workspace=Workspace(name="ws"), title="doc"
+    )
+
+
+@pytest.mark.parametrize("text", ["", "  "])
+def test_empty_content(text: str):
     with pytest.raises(EmptyContentError):
-        Content("  ")
+        Content(text)
+
+
+def test_empty_embedding_raises_error():
+    with pytest.raises(EmptyVectorError):
+        Embedding(())
 
 
 def test_no_embedding_chunk():
-    chunk = Chunk(document_id=1, content=Content("text"))
+    chunk = make_chunk()
 
     assert chunk.content == Content("text")
     assert chunk.document_id == 1
@@ -29,13 +42,8 @@ def test_no_embedding_chunk():
     assert chunk.embedding_model_id is None
 
 
-def test_empty_embedding_raises_error():
-    with pytest.raises(EmptyVectorError):
-        Embedding(())
-
-
 def test_add_embedding_chunk():
-    chunk = Chunk(document_id=1, content=Content("text"))
+    chunk = make_chunk()
     chunk.add_embedding(Embedding((1.0, 2.0, 3.0)))
 
     assert chunk.has_embedding()
@@ -43,7 +51,7 @@ def test_add_embedding_chunk():
 
 
 def test_set_embedding_chunk():
-    chunk = Chunk(document_id=1, content=Content("text"))
+    chunk = make_chunk()
     chunk.embedding = Embedding((1.0, 2.0, 3.0))
 
     assert chunk.has_embedding()
@@ -51,25 +59,13 @@ def test_set_embedding_chunk():
 
 
 def test_zero_dim_empty_embedding_chunk():
-    chunk = Chunk(document_id=1, content=Content("text"))
-
-    assert not chunk.has_embedding()
-    assert chunk.ndim == 0
+    assert not make_chunk().has_embedding()
+    assert make_chunk().ndim == 0
 
 
-def test_document_mark_preprocessed_functionality():
-    ws = Workspace(name="ws")
-    doc = Document(content=Content("Text"), workspace=ws, title="doc")
-
-    doc.mark_preprocessed()
-    assert doc.is_preprocessed
-
-
-def test_document_no_chunks():
-    ws = Workspace(name="ws")
-    doc = Document(content=Content("Text"), workspace=ws, title="doc")
+def test_document_mark_preprocessed():
+    doc = make_document()
 
     assert not doc.is_preprocessed
-
     doc.mark_preprocessed()
     assert doc.is_preprocessed
