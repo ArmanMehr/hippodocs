@@ -3,15 +3,17 @@ import pytest
 from app.domain.models import Chunk
 from app.services.rag_service import (
     DocumentIngestionService,
-    UnknownDocumentError,
-    UnknownWorkspaceError,
+    DocumentProcessingError,
+    WorkspaceNotFound,
 )
 from app.services.uow import UnitOfWork
 from tests.conftest import FakeEmbedder, FakeSplitter, seed_document, seed_workspace
 
 
 def get_ingestion_service(uow: UnitOfWork) -> DocumentIngestionService:
-    return DocumentIngestionService(uow=uow, splitter=FakeSplitter(), embedder=FakeEmbedder())
+    return DocumentIngestionService(
+        uow=uow, splitter=FakeSplitter(), embedder=FakeEmbedder()
+    )
 
 
 def get_chunks(uow: UnitOfWork, document_id: int) -> list[Chunk]:
@@ -34,12 +36,12 @@ def ingested_document(document_id: int, uow: UnitOfWork) -> int:
 
 
 def test_ingest_unknown_document_raises_error(uow: UnitOfWork):
-    with pytest.raises(UnknownDocumentError):
+    with pytest.raises(DocumentProcessingError):
         get_ingestion_service(uow).ingest_document(document_id=999)
 
 
 def test_ingest_unknown_workspace_raises_error(uow: UnitOfWork):
-    with pytest.raises(UnknownWorkspaceError):
+    with pytest.raises(WorkspaceNotFound):
         get_ingestion_service(uow).ingest_workspace(workspace_id=999)
 
 

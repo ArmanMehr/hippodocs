@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -7,10 +8,14 @@ from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.stores import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
+from openai import RateLimitError as OpenAIRateLimitError
 from pydantic import SecretStr
 
 from app.domain.models import Embedding
+from app.exceptions import RateLimitError
 from app.services.ports import TextEmbedder
+
+logger = logging.getLogger(__name__)
 
 CACHE_NAMESPACE = "rag_cache"
 
@@ -25,14 +30,22 @@ class LangchainEmbedderBase:
     model_id: str
 
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
-        return [
-            Embedding(vector=tuple(vector), model_id=self.model_id)
-            for vector in self._embedder.embed_documents(texts=list(texts))
-        ]
+        try:
+            return [
+                Embedding(vector=tuple(vector), model_id=self.model_id)
+                for vector in self._embedder.embed_documents(texts=list(texts))
+            ]
+        except OpenAIRateLimitError as e:
+            logger.warning("Embedding rate limit exceeded: %s", e)
+            raise RateLimitError() from e
 
     def embed_query(self, text: str) -> Embedding:
-        vector = self._embedder.embed_query(text=text)
-        return Embedding(vector=tuple(vector), model_id=self.model_id)
+        try:
+            vector = self._embedder.embed_query(text=text)
+            return Embedding(vector=tuple(vector), model_id=self.model_id)
+        except OpenAIRateLimitError as e:
+            logger.warning("Embedding rate limit exceeded: %s", e)
+            raise RateLimitError() from e
 
 
 class LangChainOpenAITextEmbedder(LangchainEmbedderBase):

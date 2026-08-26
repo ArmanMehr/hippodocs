@@ -3,22 +3,17 @@ from logging import getLogger
 
 from app.adapters.llm import LangchainPromptTemplate
 from app.domain.models import Chunk, Content, Document, Workspace
-from app.services.ports import LLMChat, PromptTemplate, TextEmbedder, TextSplitter
+from app.exceptions import DocumentProcessingError, WorkspaceNotFound
+from app.services.ports import (
+    FileReader,
+    LLMChat,
+    PromptTemplate,
+    TextEmbedder,
+    TextSplitter,
+)
 from app.services.uow import UnitOfWork
 
 logger = getLogger(__name__)
-
-
-class UnknownWorkspaceError(KeyError):
-    pass
-
-
-class UnknownDocumentError(KeyError):
-    pass
-
-
-class UnknownChunkError(KeyError):
-    pass
 
 
 DEFAULT_RAG_PROMPT_TEMPLATE = LangchainPromptTemplate(
@@ -52,7 +47,7 @@ class WorkspaceService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise UnknownWorkspaceError(workspace_id)
+                raise WorkspaceNotFound(workspace_id)
 
             document = Document(content=Content(text), workspace=workspace, title=title)
             self.uow.documents.add(document)
@@ -91,11 +86,28 @@ class DocumentIngestionService:
         self.splitter = splitter
         self.embedder = embedder
 
+    def add_document(
+        self, reader: FileReader, file_data: bytes, workspace_id: int, title: str | None
+    ) -> int:
+        text = reader.read(file_data)
+        with self.uow:
+            workspace = self.uow.workspaces.get(workspace_id)
+            if workspace is None:
+                raise WorkspaceNotFound(workspace_id)
+
+            document = Document(content=Content(text), workspace=workspace, title=title)
+            self.uow.documents.add(document)
+            self.uow.commit()
+            document_id = document.document_id  # type: ignore[attr-defined]
+
+        self.ingest_document(document_id)
+        return document_id
+
     def ingest_document(self, document_id: int) -> None:
         with self.uow:
             document = self.uow.documents.get(document_id=document_id)
             if document is None:
-                raise UnknownDocumentError
+                raise DocumentProcessingError(document_id)
 
             contents = self.splitter.split_text(document.content.value)
             if not contents:
@@ -111,7 +123,7 @@ class DocumentIngestionService:
     def ingest_workspace(self, workspace_id: int) -> None:
         with self.uow:
             if self.uow.workspaces.get(workspace_id) is None:
-                raise UnknownWorkspaceError(workspace_id)
+                raise WorkspaceNotFound(workspace_id)
 
             documents: Sequence[Document] = (
                 self.uow.documents.list_unpreprocessed_by_workspace(workspace_id)
@@ -158,7 +170,7 @@ class RagService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise UnknownWorkspaceError(workspace_id)
+                raise WorkspaceNotFound(workspace_id)
             query_embedding = self.embedder.embed_query(query_text)
             found_chunks = self.uow.chunks.find_similar_in_workspace(
                 workspace_id=workspace_id,

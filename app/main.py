@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -9,10 +10,12 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app import setup_logging
 from app.adapters.orm import start_mappers
 from app.configs import get_settings
+from app.exceptions import AppError, error_payload
 from app.limiter import limiter
 from app.routers.ask import router as ask_router
 from app.routers.workspaces import router as documents_router
 from app.services.factory import (
+    create_file_readers,
     create_ingestion_service,
     create_rag_service,
     create_workspace_service,
@@ -31,6 +34,7 @@ async def lifespan(app: FastAPI):
     app.state.ingestion_service = create_ingestion_service()
     app.state.rag_service = create_rag_service()
     app.state.workspace_service = create_workspace_service()
+    app.state.file_readers = create_file_readers()
     try:
         yield
     finally:
@@ -41,6 +45,13 @@ app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(_request: Request, exception: AppError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exception.status_code, content=error_payload(exception)
+    )
 
 
 app.include_router(documents_router)

@@ -2,6 +2,7 @@ import logging
 
 import httpx
 
+from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.adapters.llm import LangChainOpenAILLMChat
 from app.adapters.text_embedder import (
     LangchainEmbedder,
@@ -11,6 +12,7 @@ from app.adapters.text_embedder import (
 )
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
 from app.configs import get_settings
+from app.exceptions import ValidationError
 from app.services.ports import LLMChat, TextEmbedder, TextSplitter
 from app.services.rag_service import (
     DocumentIngestionService,
@@ -37,7 +39,7 @@ def _create_langchain_embedder(
             dimensions=dimensions,
         )
     else:
-        raise ValueError(f"Unknown embedding provider: {provider}")
+        raise ValidationError(f"Unknown embedding provider: {provider}")
 
     return LangChainInMemoryCacheBackedEmbedder(embedder)
 
@@ -50,14 +52,14 @@ def _create_llm(provider: str, model_id: str, base_url: str) -> LLMChat:
             api_key=get_settings().OPENAI_API_KEY,
             max_retries=10,
         )
-    raise ValueError(f"Unknown LLM provider: {provider}")
+    raise ValidationError(f"Unknown LLM provider: {provider}")
 
 
 def _ping(url: str) -> bool:
     try:
         httpx.get(url, timeout=5)
         return True
-    except Exception:
+    except Exception:  # noqa
         return False
 
 
@@ -120,6 +122,14 @@ def create_text_splitter() -> TextSplitter:
     return LangChainRecursiveTextSplitter(
         chunk_size=s.CHUNK_SIZE, chunk_overlap=s.CHUNK_OVERLAP
     )
+
+
+def create_file_readers() -> FileReaderRegistry:
+    registry = FileReaderRegistry()
+    registry.register("pdf", PdfReader())
+    registry.register("md", MarkdownReader())
+    registry.register("markdown", MarkdownReader())
+    return registry
 
 
 def create_uow() -> UnitOfWork:

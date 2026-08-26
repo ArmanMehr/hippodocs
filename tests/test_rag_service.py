@@ -1,7 +1,7 @@
 import pytest
 
 from app.domain.models import Chunk, Content, Document, Embedding
-from app.services.rag_service import RagService, UnknownWorkspaceError
+from app.services.rag_service import RagService, WorkspaceNotFound
 from app.services.uow import UnitOfWork
 from tests.conftest import FakeEmbedder, FakeLLMChat, seed_workspace
 
@@ -43,7 +43,7 @@ def seed_workspace_with_chunks(uow: UnitOfWork, n_chunks: int = 2) -> int:
 
 
 def test_query_unknown_workspace_raises_error(rag_service: RagService):
-    with pytest.raises(UnknownWorkspaceError):
+    with pytest.raises(WorkspaceNotFound):
         rag_service.query(workspace_id=999, query_text="question")
 
 

@@ -4,6 +4,11 @@ from typing import Protocol
 from app.domain.models import Content, Embedding
 
 
+class FileReader(Protocol):
+    def validate(self, content: bytes, header: bytes) -> None: ...
+    def read(self, content: bytes) -> str: ...
+
+
 class TextSplitter(Protocol):
     def split_text(self, text: str) -> list[Content]: ...
 

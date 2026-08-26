@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.rag_service import UnknownWorkspaceError, WorkspaceService
+from app.services.rag_service import WorkspaceNotFound, WorkspaceService
 from tests.conftest import FakeUnitOfWork
 
 
@@ -59,5 +59,5 @@ def test_new_document_creates_doc_and_returns_id(
 def test_new_document_for_unknown_workspace(
     workspace_service: WorkspaceService,
 ) -> None:
-    with pytest.raises(UnknownWorkspaceError):
+    with pytest.raises(WorkspaceNotFound):
         workspace_service.new_document(999, "Title", "Some text content")

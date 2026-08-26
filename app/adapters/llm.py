@@ -1,6 +1,13 @@
+import logging
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai.chat_models import ChatOpenAI
+from openai import RateLimitError as OpenAIRateLimitError
+
+from app.exceptions import RateLimitError
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainOpenAILLMChat:
@@ -15,7 +22,11 @@ class LangChainOpenAILLMChat:
         self._chain = model | StrOutputParser()
 
     def invoke(self, query: str) -> str:
-        return self._chain.invoke(query)
+        try:
+            return self._chain.invoke(query)
+        except OpenAIRateLimitError as e:
+            logger.warning("LLM rate limit exceeded: %s", e)
+            raise RateLimitError() from e
 
 
 class LangchainPromptTemplate:
