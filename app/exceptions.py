@@ -49,6 +49,9 @@ class DocumentNotFound(AppError):
     status_code = 404
     error_code = "document_not_found"
 
+    def __init__(self, document_id: int) -> None:
+        super().__init__(f"Document {document_id} not found")
+
 
 class DocumentProcessingError(AppError):
     status_code = 400
