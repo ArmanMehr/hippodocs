@@ -56,7 +56,7 @@ async def app_error_handler(_request: Request, exception: AppError) -> JSONRespo
 app.include_router(api_v1_router)
 
 
-@app.get("/health", tags=["Health"])
+@app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "ok"}
 

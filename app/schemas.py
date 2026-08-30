@@ -31,6 +31,16 @@ class AddDocumentResponseSchema(BaseModel):
     text: str = Field(default_factory=str, min_length=1, max_length=5_000_000)
 
 
+class DocumentSchema(BaseModel):
+    document_id: int
+    title: str | None = None
+
+
+class DocumentListSchema(BaseModel):
+    documents: list[DocumentSchema]
+    total: int
+
+
 class AskChatSchema(BaseModel):
     question: str = Field(min_length=1, max_length=5_000)
 

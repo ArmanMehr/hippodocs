@@ -100,20 +100,21 @@ class FakeDocumentRepository:
     def get(self, document_id: int) -> Document | None:
         return self._documents.get(document_id)
 
-    def list_by_workspace(self, workspace_id: int) -> Sequence[Document]:
-        return [
+    def list_by_workspace(
+        self, workspace_id: int, skip: int = 0, limit: int = 100
+    ) -> tuple[list[Document], int]:
+        docs = [
             doc
             for doc in self._documents.values()
-            if doc.workspace
-            and getattr(doc.workspace, "workspace_id", None) == workspace_id
+            if doc.workspace and doc.workspace.workspace_id == workspace_id  # type: ignore
         ]
+        total = len(docs)
+        print(docs)
+        return docs[skip : skip + limit], total
 
-    def list_unpreprocessed_by_workspace(self, workspace_id: int) -> Sequence[Document]:
-        return [
-            doc
-            for doc in self.list_by_workspace(workspace_id)
-            if not doc.is_preprocessed
-        ]
+    def list_unpreprocessed_by_workspace(self, workspace_id: int) -> tuple[list[Document], int]:
+        docs, total = self.list_by_workspace(workspace_id)
+        return [doc for doc in docs if not doc.is_preprocessed], total
 
     def delete(self, document_id: int) -> None:
         self._documents.pop(document_id, None)

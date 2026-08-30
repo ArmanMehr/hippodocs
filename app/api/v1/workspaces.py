@@ -1,10 +1,7 @@
-from fastapi import APIRouter, File, Path, Query, Request, UploadFile, status
+from fastapi import APIRouter, Query, Request, status
 
-from app.configs import get_settings
-from app.exceptions import FileTooLarge, MissingFilename
 from app.limiter import limiter
 from app.schemas import (
-    AddDocumentResponseSchema,
     WorkspaceCreateSchema,
     WorkspaceListSchema,
     WorkspaceSchema,
@@ -45,36 +42,3 @@ def get_workspace(request: Request, workspace_id: int):
 @limiter.limit("60/minute")
 def delete_workspace(request: Request, workspace_id: int) -> None:
     request.app.state.workspace_service.delete_workspace(workspace_id)
-
-
-@router.post(
-    "/{workspace_id}/documents",
-    status_code=status.HTTP_201_CREATED,
-    response_model=AddDocumentResponseSchema,
-)
-@limiter.limit("10/minute")
-def upload_document(
-    request: Request,
-    workspace_id: int = Path(...),
-    file: UploadFile = File(...),  # noqa: B008
-):
-    if not file.filename:
-        raise MissingFilename()
-
-    if file.size is not None and file.size > get_settings().MAX_FILESIZE:
-        raise FileTooLarge()
-
-    extension = file.filename.rsplit(".", 1)[-1].lower()
-    reader = request.app.state.file_readers.get(extension)
-
-    content = file.file.read()
-    title = file.filename.rsplit(".", 1)[0]
-
-    document_id = request.app.state.ingestion_service.add_document(
-        reader=reader,
-        file_data=content,
-        workspace_id=workspace_id,
-        title=title,
-    )
-
-    return AddDocumentResponseSchema(document_id=document_id, title=title, text=content)

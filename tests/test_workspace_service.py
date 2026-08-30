@@ -61,3 +61,18 @@ def test_new_document_for_unknown_workspace(
 ) -> None:
     with pytest.raises(WorkspaceNotFound):
         workspace_service.new_document(999, "Title", "Some text content")
+
+
+def test_list_documents_in_workspace_paginates_and_returns_total(
+    workspace_service: WorkspaceService,
+) -> None:
+    workspace_id = workspace_service.new_workspace("WS")
+    workspace_service.new_document(workspace_id, "Doc 1", "text 1")
+    workspace_service.new_document(workspace_id, "Doc 2", "text 2")
+    workspace_service.new_document(workspace_id, "Doc 3", "text 3")
+
+    documents, total = workspace_service.list_documents_in_workspace(
+        workspace_id, skip=1, limit=1
+    )
+    assert total == 3
+    assert [doc.title for doc in documents] == ["Doc 2"]

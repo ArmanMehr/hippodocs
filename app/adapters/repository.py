@@ -25,11 +25,13 @@ class DocumentRepository(Protocol):
 
     def get(self, document_id: int) -> Document | None: ...
 
-    def list_by_workspace(self, workspace_id: int) -> Sequence[Document]: ...
+    def list_by_workspace(
+        self, workspace_id: int, skip: int, limit: int
+    ) -> tuple[list[Document], int]: ...
 
     def list_unpreprocessed_by_workspace(
         self, workspace_id: int
-    ) -> Sequence[Document]: ...
+    ) -> tuple[list[Document], int]: ...
 
     def delete(self, document_id: int) -> None: ...
 
@@ -70,8 +72,8 @@ class SQLAlchemyWorkspaceRepository:
         if not rows:
             return [], 0
 
-        workspaces = [row[0] for row in rows]
-        total = rows[0][1]
+        workspaces: list[Workspace] = [row[0] for row in rows]
+        total: int = rows[0][1]
 
         return workspaces, total
 
@@ -99,18 +101,37 @@ class SQLAlchemyDocumentRepository:
         stmt = select(Document).where(documents_table.c.document_id == document_id)
         return self._session.scalar(stmt)
 
-    def list_by_workspace(self, workspace_id: int) -> Sequence[Document]:
-        stmt = select(Document).where(documents_table.c.workspace_id == workspace_id)
-        return list(self._session.scalars(stmt))
+    def list_by_workspace(
+        self, workspace_id: int, skip: int, limit: int
+    ) -> tuple[list[Document], int]:
+        stmt = (
+            select(Document, func.count().over().label("total_count"))
+            .where(documents_table.c.workspace_id == workspace_id)
+            .offset(skip)
+            .limit(limit)
+        )
+        rows = self._session.execute(stmt).all()
+        if not rows:
+            return [], 0
 
-    def list_unpreprocessed_by_workspace(self, workspace_id: int) -> Sequence[Document]:
-        stmt = select(Document).where(
+        documents: list[Document] = [row[0] for row in rows]
+        total: int = rows[0][1]
+
+        return documents, total
+
+    def list_unpreprocessed_by_workspace(
+        self, workspace_id: int
+    ) -> tuple[list[Document], int]:
+        stmt = select(Document, func.count().over().label("total_count")).where(
             and_(
                 documents_table.c.workspace_id == workspace_id,
                 documents_table.c.is_preprocessed == False,
             )
         )
-        return list(self._session.scalars(stmt))
+        rows = self._session.execute(stmt).all()
+        if not rows:
+            return [], 0
+        return [row[0] for row in rows], rows[0][1]
 
     def delete(self, document_id: int) -> None:
         doc = self.get(document_id)

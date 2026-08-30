@@ -3,7 +3,7 @@ from logging import getLogger
 
 from app.adapters.llm import LangchainPromptTemplate
 from app.domain.models import Chunk, Content, Document, Workspace
-from app.exceptions import DocumentProcessingError, WorkspaceNotFound
+from app.exceptions import DocumentNotFound, DocumentProcessingError, WorkspaceNotFound
 from app.services.ports import (
     FileReader,
     LLMChat,
@@ -33,13 +33,38 @@ class WorkspaceService:
     def create_workspace(self, name: str) -> int:
         return self.new_workspace(name)
 
-    def new_workspace(self, name: str) -> int:
+    def delete_workspace(self, workspace_id: int) -> None:
         with self.uow:
-            workspace = Workspace(name=name)
-            self.uow.workspaces.add(workspace)
+            self.uow.workspaces.delete(workspace_id)
             self.uow.commit()
-            workspace_id = workspace.workspace_id  # type: ignore[attr-defined]
-        return workspace_id
+
+    def get_document(self, document_id: int) -> Document:
+        with self.uow:
+            document = self.uow.documents.get(document_id)
+            if document is None:
+                raise DocumentNotFound(document_id)
+        return document
+
+    def get_workspace(self, workspace_id: int) -> Workspace | None:
+        with self.uow:
+            return self.uow.workspaces.get(workspace_id)
+
+    def get_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
+        with self.uow:
+            workspaces, total = self.uow.workspaces.get_all(skip=skip, limit=limit)
+        return workspaces, total
+
+    def list_documents_in_workspace(
+        self, workspace_id: int, skip: int, limit: int
+    ) -> tuple[list[Document], int]:
+        with self.uow:
+            documents, total = self.uow.documents.list_by_workspace(
+                workspace_id, skip=skip, limit=limit
+            )
+        return documents, total
+
+    def list_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
+        return self.get_workspaces(skip=skip, limit=limit)
 
     def new_document(
         self, workspace_id: int, title: str | None, text: str
@@ -55,27 +80,24 @@ class WorkspaceService:
             document_id = document.document_id  # type: ignore[attr-defined]
         return document_id
 
-    def delete_document(self, document_id: int) -> None:
+    def new_workspace(self, name: str) -> int:
         with self.uow:
+            workspace = Workspace(name=name)
+            self.uow.workspaces.add(workspace)
+            self.uow.commit()
+            workspace_id = workspace.workspace_id  # type: ignore[attr-defined]
+        return workspace_id
+
+    def delete_document(self, workspace_id: int, document_id: int) -> None:
+        with self.uow:
+            workspace = self.uow.workspaces.get(workspace_id)
+            if workspace is None:
+                raise WorkspaceNotFound(workspace_id)
+            document = self.uow.documents.get(document_id)
+            if document is None or document.workspace.workspace_id != workspace_id:  # type: ignore[attr-defined]
+                raise DocumentNotFound(document_id)
             self.uow.documents.delete(document_id)
             self.uow.commit()
-
-    def delete_workspace(self, workspace_id: int) -> None:
-        with self.uow:
-            self.uow.workspaces.delete(workspace_id)
-            self.uow.commit()
-
-    def get_workspace(self, workspace_id: int) -> Workspace | None:
-        with self.uow:
-            return self.uow.workspaces.get(workspace_id)
-
-    def list_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
-        return self.get_workspaces(skip=skip, limit=limit)
-
-    def get_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
-        with self.uow:
-            workspaces, total = self.uow.workspaces.get_all(skip=skip, limit=limit)
-        return workspaces, total
 
 
 class DocumentIngestionService:
@@ -125,8 +147,8 @@ class DocumentIngestionService:
             if self.uow.workspaces.get(workspace_id) is None:
                 raise WorkspaceNotFound(workspace_id)
 
-            documents: Sequence[Document] = (
-                self.uow.documents.list_unpreprocessed_by_workspace(workspace_id)
+            documents, _ = self.uow.documents.list_unpreprocessed_by_workspace(
+                workspace_id
             )
 
             all_chunks: list[Chunk] = []

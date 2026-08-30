@@ -121,9 +121,49 @@ def test_document_list_by_workspace(
     add_document(document_repo, session, workspace, title="a")
     add_document(document_repo, session, workspace, title="b")
 
-    results = document_repo.list_by_workspace(workspace.workspace_id)  # type: ignore
+    results, total = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=0,
+        limit=100,
+    )
 
     assert len(results) == 2
+    assert total == 2
+
+
+def test_document_list_by_workspace_pagination(
+    document_repo: DocumentRepository, session: Session, workspace: Workspace
+):
+    for i in range(5):
+        add_document(document_repo, session, workspace, title=f"doc-{i}")
+
+    page1, total1 = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=0,
+        limit=2,
+    )
+    page2, total2 = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=2,
+        limit=2,
+    )
+    page3, total3 = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=4,
+        limit=2,
+    )
+
+    assert len(page1) == 2
+    assert total1 == 5
+    assert len(page2) == 2
+    assert total2 == 5
+    assert len(page3) == 1
+    assert total3 == 5
+    assert page1[0].title == "doc-0"
+    assert page1[1].title == "doc-1"
+    assert page2[0].title == "doc-2"
+    assert page2[1].title == "doc-3"
+    assert page3[0].title == "doc-4"
 
 
 def test_document_list_by_workspace_excludes_others(
@@ -135,9 +175,14 @@ def test_document_list_by_workspace_excludes_others(
     ws2 = add_workspace(workspace_repo, session, name="ws2")
     add_document(document_repo, session, ws2, title="c")
 
-    results = document_repo.list_by_workspace(workspace.workspace_id)  # type: ignore
+    results, total = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=0,
+        limit=100,
+    )  # type: ignore
 
     assert len(results) == 0
+    assert total == 0
 
 
 def test_document_delete_removes(
@@ -157,7 +202,13 @@ def test_delete_workspace_cascades_documents(
     add_document(document_repo, session, workspace, title="child")
     workspace_repo.delete(workspace.workspace_id)  # type: ignore
     session.commit()
-    assert document_repo.list_by_workspace(workspace.workspace_id) == []  # type: ignore
+    results, total = document_repo.list_by_workspace(
+        workspace.workspace_id,  # type: ignore
+        skip=0,
+        limit=100,
+    )
+    assert results == []
+    assert total == 0
 
 
 def make_chunk(document: Document, content: str) -> Chunk:
