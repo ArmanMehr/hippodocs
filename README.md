@@ -41,6 +41,8 @@ All endpoints are served under the `/v1` prefix.
 | GET | `/v1/workspaces/{workspace_id}` | Get a workspace |
 | DELETE | `/v1/workspaces/{workspace_id}` | Delete a workspace |
 | POST | `/v1/workspaces/{workspace_id}/documents` | Upload a document (PDF or Markdown) to a workspace |
+| GET | `/v1/workspaces/{workspace_id}/documents` | List documents in a workspace |
+| DELETE | `/v1/workspaces/{workspace_id}/documents/{document_id}` | Delete a document from a workspace |
 | POST | `/v1/workspaces/{workspace_id}/ask` | Ask a question in a workspace |
 | GET | `/v1/health` | Health check |
 
@@ -68,6 +70,7 @@ app/
 │   └── v1/              # Versioned FastAPI routers
 │       ├── __init__.py
 │       ├── ask.py
+│       ├── documents.py
 │       └── workspaces.py
 ├── adapters/            # Infrastructure adapters (LLM, embedders, file readers, ...)
 ├── domain/              # Domain models
