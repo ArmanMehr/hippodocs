@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query, Request, status
 
+from app.exceptions import WorkspaceNotFound
 from app.limiter import limiter
 from app.schemas import (
     WorkspaceCreateSchema,
@@ -35,6 +36,8 @@ def list_workspaces(
 @limiter.limit("120/minute")
 def get_workspace(request: Request, workspace_id: int):
     workspace = request.app.state.workspace_service.get_workspace(workspace_id)
+    if workspace is None:
+        raise WorkspaceNotFound(workspace_id)
     return WorkspaceSchema(workspace_id=workspace.workspace_id, name=workspace.name)
 
 

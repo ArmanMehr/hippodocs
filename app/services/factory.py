@@ -136,22 +136,26 @@ def create_uow() -> UnitOfWork:
     return SQLAlchemyUnitOfWork()
 
 
-def create_ingestion_service() -> DocumentIngestionService:
+def create_ingestion_service(uow: UnitOfWork | None = None) -> DocumentIngestionService:
     return DocumentIngestionService(
-        uow=create_uow(),
+        uow=uow or create_uow(),
         splitter=create_text_splitter(),
         embedder=create_text_embedder(),
     )
 
 
-def create_rag_service() -> RagService:
+def create_rag_service(
+    uow: UnitOfWork | None = None,
+    embedder: TextEmbedder | None = None,
+    llm: LLMChat | None = None,
+) -> RagService:
     return RagService(
-        uow=create_uow(),
-        embedder=create_text_embedder(),
-        llm=create_llm_chat(),
+        uow=uow or create_uow(),
+        embedder=embedder or create_text_embedder(),
+        llm=llm or create_llm_chat(),
         top_k=get_settings().TOP_K,
     )
 
 
-def create_workspace_service() -> WorkspaceService:
-    return WorkspaceService(uow=create_uow())
+def create_workspace_service(uow: UnitOfWork | None = None) -> WorkspaceService:
+    return WorkspaceService(uow=uow or create_uow())

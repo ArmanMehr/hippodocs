@@ -112,7 +112,9 @@ class FakeDocumentRepository:
         print(docs)
         return docs[skip : skip + limit], total
 
-    def list_unpreprocessed_by_workspace(self, workspace_id: int) -> tuple[list[Document], int]:
+    def list_unpreprocessed_by_workspace(
+        self, workspace_id: int
+    ) -> tuple[list[Document], int]:
         docs, total = self.list_by_workspace(workspace_id)
         return [doc for doc in docs if not doc.is_preprocessed], total
 
@@ -216,7 +218,7 @@ class FakeLLMChat:
 
 
 class FakePromptTemplate:
-    def format_prompt(self, question: str, context: list[str]) -> str:
+    def format(self, question: str, context: list[str]) -> str:
         return ("Question: {question}\nContext: {context}\nAnswer:").format(
             question=question,
             context="\n".join(context),
