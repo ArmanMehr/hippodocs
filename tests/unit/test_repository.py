@@ -179,7 +179,7 @@ def test_document_list_by_workspace_excludes_others(
         workspace.workspace_id,  # type: ignore
         skip=0,
         limit=100,
-    )  # type: ignore
+    )
 
     assert len(results) == 0
     assert total == 0
