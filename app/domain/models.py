@@ -55,6 +55,10 @@ class Embedding:
         if self.model_id is not None and not self.model_id.strip():
             raise ValueError("model_id cannot be an empty string or whitespace.")
 
+    @property
+    def ndim(self):
+        return len(self.vector)
+
 
 @dataclass
 class Chunk:

@@ -69,3 +69,29 @@ def test_document_mark_preprocessed():
     assert not doc.is_preprocessed
     doc.mark_preprocessed()
     assert doc.is_preprocessed
+
+
+def test_chunk_embedding_property_returns_embedding():
+    chunk = make_chunk()
+    chunk.embedding = Embedding((1.0, 2.0), model_id="m1")
+
+    emb = chunk.embedding
+    assert isinstance(emb, Embedding)
+    assert emb.vector == (1.0, 2.0)
+    assert emb.model_id == "m1"
+
+
+def test_chunk_embedding_setter_none_clears():
+    chunk = make_chunk()
+    chunk.embedding = Embedding((1.0,))
+    chunk.embedding = None
+
+    assert chunk.embedding_vector is None
+    assert chunk.embedding_model_id is None
+    assert not chunk.has_embedding()
+
+
+def test_chunk_ndim_with_vector():
+    chunk = make_chunk()
+    chunk.embedding = Embedding((1.0, 2.0, 3.0))
+    assert chunk.ndim == 3
