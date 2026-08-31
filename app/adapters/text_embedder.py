@@ -3,7 +3,7 @@ import logging
 from collections.abc import Sequence
 from typing import Protocol
 
-from langchain.embeddings import Embeddings
+from langchain.embeddings import Embeddings as LangChainEmbeddings
 from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.stores import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
@@ -11,22 +11,21 @@ from langchain_openai import OpenAIEmbeddings
 from openai import RateLimitError as OpenAIRateLimitError
 from pydantic import SecretStr
 
+from app.configs import get_settings
 from app.domain.models import Embedding
-from app.exceptions import RateLimitError
+from app.exceptions import EmbeddingError, RateLimitError
 from app.services.ports import TextEmbedder
 
 logger = logging.getLogger(__name__)
 
-CACHE_NAMESPACE = "rag_cache"
-
 
 class LangchainEmbedder(TextEmbedder, Protocol):
     @property
-    def embedder(self) -> Embeddings: ...
+    def embedder(self) -> LangChainEmbeddings: ...
 
 
-class LangchainEmbedderBase:
-    _embedder: Embeddings
+class LangChainEmbedderBase:
+    _embedder: LangChainEmbeddings
     model_id: str
 
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
@@ -38,6 +37,9 @@ class LangchainEmbedderBase:
         except OpenAIRateLimitError as e:
             logger.warning("Embedding rate limit exceeded: %s", e)
             raise RateLimitError() from e
+        except Exception as e:  # noqa: BLE001
+            logger.error("Embedding failed: %s", e)
+            raise EmbeddingError("External api error")
 
     def embed_query(self, text: str) -> Embedding:
         try:
@@ -46,9 +48,12 @@ class LangchainEmbedderBase:
         except OpenAIRateLimitError as e:
             logger.warning("Embedding rate limit exceeded: %s", e)
             raise RateLimitError() from e
+        except Exception as e:  # noqa: BLE001
+            logger.error("Embedding failed: %s", e)
+            raise EmbeddingError("External api error")
 
 
-class LangChainOpenAITextEmbedder(LangchainEmbedderBase):
+class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
     def __init__(
         self, model_id: str, base_url: str, api_key: str, dimensions: int
     ) -> None:
@@ -62,11 +67,11 @@ class LangChainOpenAITextEmbedder(LangchainEmbedderBase):
         self.model_id = model_id
 
     @property
-    def embedder(self) -> Embeddings:
+    def embedder(self) -> LangChainEmbeddings:
         return self._embedder
 
 
-class LangChainOllamaTextEmbedder(LangchainEmbedderBase):
+class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
     def __init__(self, model_id: str, base_url: str, dimensions: int) -> None:
         self._embedder = OllamaEmbeddings(
             model=model_id, base_url=base_url, dimensions=dimensions
@@ -74,12 +79,12 @@ class LangChainOllamaTextEmbedder(LangchainEmbedderBase):
         self.model_id = model_id
 
     @property
-    def embedder(self) -> Embeddings:
+    def embedder(self) -> LangChainEmbeddings:
         return self._embedder
 
 
 # TODO: Will be replaced by Redis in the future.
-class LangChainInMemoryCacheBackedEmbedder(LangchainEmbedderBase):
+class LangChainInMemoryCacheBackedEmbedder(LangChainEmbedderBase):
     def __init__(self, langchain_embedder: LangchainEmbedder) -> None:
         cache_store = InMemoryStore()
 
@@ -93,9 +98,9 @@ class LangChainInMemoryCacheBackedEmbedder(LangchainEmbedderBase):
 
     @staticmethod
     def _sha256_encoder(key: str) -> str:
-        namespaced_key = f"{CACHE_NAMESPACE}:{key}"
+        namespaced_key = f"{get_settings().CACHE_NAMESPACE}:{key}"
         return hashlib.sha256(namespaced_key.encode("utf-8")).hexdigest()
 
     @property
-    def embedder(self) -> Embeddings:
+    def embedder(self) -> LangChainEmbeddings:
         return self._embedder

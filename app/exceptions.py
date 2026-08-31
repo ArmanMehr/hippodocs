@@ -85,3 +85,13 @@ class FileTooLarge(ValidationError):
 
 class MissingFilename(ValidationError):
     error_code = "missing_filename"
+
+
+class EmbeddingError(AppError):
+    status_code = 502
+    error_code = "embedding_error"
+
+
+class LLMError(AppError):
+    status_code = 502
+    error_code = "llm_error"

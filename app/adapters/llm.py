@@ -5,7 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai.chat_models import ChatOpenAI
 from openai import RateLimitError as OpenAIRateLimitError
 
-from app.exceptions import RateLimitError
+from app.exceptions import LLMError, RateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ class LangChainOpenAILLMChat:
         except OpenAIRateLimitError as e:
             logger.warning("LLM rate limit exceeded: %s", e)
             raise RateLimitError() from e
+        except Exception as e:  # noqa: BLE001
+            logger.error("LLM invocation failed: %s", e)
+            raise LLMError("External api error")
 
 
 class LangchainPromptTemplate:
