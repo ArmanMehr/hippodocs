@@ -1,5 +1,11 @@
 from fastapi import APIRouter, File, Path, Query, Request, UploadFile, status
 
+from app.adapters.file_reader import FileReaderRegistry
+from app.api.dependencies import (
+    file_readers_dep,
+    ingestion_service_dep,
+    workspace_service_dep,
+)
 from app.configs import get_settings
 from app.exceptions import FileTooLarge, MissingFilename
 from app.limiter import limiter
@@ -8,6 +14,7 @@ from app.schemas import (
     DocumentListSchema,
     DocumentSchema,
 )
+from app.services.rag_service import DocumentIngestionService, WorkspaceService
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -21,12 +28,13 @@ def get_documents(
     workspace_id: int = Path(...),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    workspace_service: WorkspaceService = workspace_service_dep,
 ):
-    documents, total = request.app.state.workspace_service.list_documents_in_workspace(
+    documents, total = workspace_service.list_documents_in_workspace(
         workspace_id, skip=skip, limit=limit
     )
     doc_schemas = [
-        DocumentSchema(document_id=doc.document_id, title=doc.title)
+        DocumentSchema(document_id=doc.document_id, title=doc.title)  # type: ignore[attr-defined]
         for doc in documents
     ]
     return DocumentListSchema(documents=doc_schemas, total=total)
@@ -42,6 +50,8 @@ def upload_document(
     request: Request,
     workspace_id: int = Path(...),
     file: UploadFile = File(...),  # noqa: B008
+    file_readers: FileReaderRegistry = file_readers_dep,
+    ingestion_service: DocumentIngestionService = ingestion_service_dep,
 ):
     if not file.filename:
         raise MissingFilename()
@@ -50,12 +60,12 @@ def upload_document(
         raise FileTooLarge()
 
     extension = file.filename.rsplit(".", 1)[-1].lower()
-    reader = request.app.state.file_readers.get(extension)
+    reader = file_readers.get(extension)
 
     content = file.file.read()
     title = file.filename.rsplit(".", 1)[0]
 
-    document_id = request.app.state.ingestion_service.add_document(
+    document_id = ingestion_service.add_document(
         reader=reader,
         file_data=content,
         workspace_id=workspace_id,
@@ -71,5 +81,6 @@ def delete_document(
     request: Request,
     workspace_id: int = Path(...),
     document_id: int = Path(...),
+    workspace_service: WorkspaceService = workspace_service_dep,
 ) -> None:
-    request.app.state.workspace_service.delete_document(workspace_id, document_id)
+    workspace_service.delete_document(workspace_id, document_id)

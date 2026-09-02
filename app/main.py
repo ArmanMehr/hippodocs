@@ -13,12 +13,6 @@ from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
 from app.exceptions import AppError, error_payload
 from app.limiter import limiter
-from app.services.factory import (
-    create_file_readers,
-    create_ingestion_service,
-    create_rag_service,
-    create_workspace_service,
-)
 
 level = getattr(logging, get_settings().LOG_LEVEL)
 setup_logging(level=level)
@@ -30,10 +24,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting the RAG API.")
     start_mappers()
-    app.state.ingestion_service = create_ingestion_service()
-    app.state.rag_service = create_rag_service()
-    app.state.workspace_service = create_workspace_service()
-    app.state.file_readers = create_file_readers()
     try:
         yield
     finally:

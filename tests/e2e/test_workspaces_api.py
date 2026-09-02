@@ -6,6 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from app.api.dependencies import (
+    get_file_readers,
+    get_ingestion_service,
+    get_rag_service,
+    get_workspace_service,
+)
 from app.main import app
 from app.services.factory import (
     create_file_readers,
@@ -35,10 +41,10 @@ def client() -> TestClient:
     )
     file_readers = create_file_readers()
 
-    app.state.workspace_service = workspace_service
-    app.state.ingestion_service = ingestion_service
-    app.state.rag_service = rag_service
-    app.state.file_readers = file_readers
+    app.dependency_overrides[get_workspace_service] = lambda: workspace_service
+    app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
+    app.dependency_overrides[get_rag_service] = lambda: rag_service
+    app.dependency_overrides[get_file_readers] = lambda: file_readers
 
     return TestClient(app)
 
