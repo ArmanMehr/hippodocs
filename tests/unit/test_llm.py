@@ -16,6 +16,7 @@ def _make_llm_chat(mocker: MockerFixture) -> LangChainOpenAILLMChat:
             base_url="http://localhost",
             api_key="key",
             max_retries=0,
+            system_prompt="You are a test assistant.",
         )
     obj._chain = mocker.MagicMock()
     return obj

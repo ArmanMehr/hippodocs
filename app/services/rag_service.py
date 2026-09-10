@@ -1,7 +1,6 @@
 from collections.abc import Sequence
 from logging import getLogger
 
-from app.adapters.llm import LangchainPromptTemplate
 from app.domain.models import Chunk, Content, Document, Workspace
 from app.exceptions import DocumentNotFound, DocumentProcessingError, WorkspaceNotFound
 from app.services.ports import (
@@ -14,16 +13,6 @@ from app.services.ports import (
 from app.services.uow import UnitOfWork
 
 logger = getLogger(__name__)
-
-
-DEFAULT_RAG_PROMPT_TEMPLATE = LangchainPromptTemplate(
-    """
-    Answer the question based only on the following context:
-    {context}
-    Question: {question}
-    Answer concisely. If unsure, state 'I don't know.'
-    """
-)
 
 
 class WorkspaceService:
@@ -180,7 +169,7 @@ class RagService:
         embedder: TextEmbedder,
         llm: LLMChat,
         top_k: int,
-        chat_prompt: PromptTemplate = DEFAULT_RAG_PROMPT_TEMPLATE,
+        chat_prompt: PromptTemplate,
     ) -> None:
         self.uow = uow
         self.embedder = embedder

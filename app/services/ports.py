@@ -22,6 +22,7 @@ class TextEmbedder(Protocol):
 
 class LLMChat(Protocol):
     model_id: str
+    system_prompt: str
 
     def invoke(self, query: str) -> str: ...
 

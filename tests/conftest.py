@@ -208,8 +208,9 @@ class FakeEmbedder:
 
 
 class FakeLLMChat:
-    def __init__(self, model_id: str = ""):
+    def __init__(self, model_id: str = "", system_prompt: str = ""):
         self.model_id = model_id
+        self.system_prompt = system_prompt
         self.prompts: list[str] = []
 
     def invoke(self, query: str) -> str:

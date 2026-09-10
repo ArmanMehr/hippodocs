@@ -3,7 +3,7 @@ import logging
 import httpx
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
-from app.adapters.llm import LangChainOpenAILLMChat
+from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
 from app.adapters.text_embedder import (
     LangchainEmbedder,
     LangChainInMemoryCacheBackedEmbedder,
@@ -44,13 +44,16 @@ def _create_langchain_embedder(
     return LangChainInMemoryCacheBackedEmbedder(embedder)
 
 
-def _create_llm(provider: str, model_id: str, base_url: str) -> LLMChat:
+def _create_llm(
+    provider: str, model_id: str, base_url: str, system_prompt: str
+) -> LLMChat:
     if provider == "openai":
         return LangChainOpenAILLMChat(
             model_id=model_id,
             base_url=base_url,
             api_key=get_settings().OPENAI_API_KEY,
             max_retries=10,
+            system_prompt=system_prompt,
         )
     raise ValidationError(f"Unknown LLM provider: {provider}")
 
@@ -94,7 +97,9 @@ def create_text_embedder() -> TextEmbedder:
 def create_llm_chat() -> LLMChat:
     s = get_settings()
 
-    primary = _create_llm(s.LLM_PROVIDER, s.LLM_MODEL, s.LLM_BASE_URL)
+    primary = _create_llm(
+        s.LLM_PROVIDER, s.LLM_MODEL, s.LLM_BASE_URL, s.LLM_SYSTEM_PROMPT
+    )
     if _ping(s.LLM_BASE_URL):
         return primary
 
@@ -109,7 +114,7 @@ def create_llm_chat() -> LLMChat:
         s.LLM_MODEL,
         s.LLM_BASE_URL,
     ):
-        fb = _create_llm(fb_provider, fb_model, fb_url)
+        fb = _create_llm(fb_provider, fb_model, fb_url, s.LLM_SYSTEM_PROMPT)
         if _ping(fb_url):
             return fb
 
@@ -149,11 +154,13 @@ def create_rag_service(
     embedder: TextEmbedder | None = None,
     llm: LLMChat | None = None,
 ) -> RagService:
+    s = get_settings()
     return RagService(
         uow=uow or create_uow(),
         embedder=embedder or create_text_embedder(),
         llm=llm or create_llm_chat(),
-        top_k=get_settings().TOP_K,
+        top_k=s.TOP_K,
+        chat_prompt=LangchainPromptTemplate(s.RAG_PROMPT_TEMPLATE),
     )
 
 
