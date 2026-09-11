@@ -1,11 +1,15 @@
 from collections.abc import Sequence
 from logging import getLogger
+from typing import BinaryIO
 
+from app.adapters.file_reader import FileReader, FileReaderRegistry
 from app.domain.models import Chunk, Content, Document, Workspace
 from app.exceptions import DocumentNotFound, DocumentProcessingError, WorkspaceNotFound
 from app.services.ports import (
-    FileReader,
+    InputSanitizer,
     LLMChat,
+    OutputValidator,
+    PIIRedactor,
     PromptTemplate,
     TextEmbedder,
     TextSplitter,
@@ -89,30 +93,52 @@ class WorkspaceService:
             self.uow.commit()
 
 
+class FileReaderService:
+    def __init__(self, registry: FileReaderRegistry) -> None:
+        self.registry = registry
+
+    def read(self, content: BinaryIO, file_name: str) -> str:
+        extension = file_name.rsplit(".", 1)[-1].lower()
+        reader = self._get_reader(extension)
+        return reader.read(content.read())
+
+    def get_filename_no_ext(self, file_name: str) -> str:
+        return file_name.rsplit(".", 1)[0]
+
+    def _get_reader(self, file_extension: str) -> FileReader:
+        return self.registry.get(file_extension)
+
+
 class DocumentIngestionService:
     def __init__(
-        self, uow: UnitOfWork, splitter: TextSplitter, embedder: TextEmbedder
+        self,
+        uow: UnitOfWork,
+        splitter: TextSplitter,
+        embedder: TextEmbedder,
     ) -> None:
         self.uow = uow
         self.splitter = splitter
         self.embedder = embedder
 
     def add_document(
-        self, reader: FileReader, file_data: bytes, workspace_id: int, title: str | None
-    ) -> int:
-        text = reader.read(file_data)
+        self, text: str, workspace_id: int, title: str
+    ) -> tuple[int, str, str]:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
                 raise WorkspaceNotFound(workspace_id)
 
-            document = Document(content=Content(text), workspace=workspace, title=title)
+            document = Document(
+                content=Content(text),
+                workspace=workspace,
+                title=title or None,
+            )
             self.uow.documents.add(document)
             self.uow.commit()
             document_id = document.document_id  # type: ignore[attr-defined]
 
         self.ingest_document(document_id)
-        return document_id
+        return document_id, title, text
 
     def ingest_document(self, document_id: int) -> None:
         with self.uow:
@@ -160,6 +186,25 @@ class DocumentIngestionService:
             Chunk(document_id=document_id, content=content).add_embedding(embedding)
             for content, embedding in zip(contents, embeddings, strict=True)
         ]
+
+
+class InputValidatorService:
+    def __init__(self, input_sanitizer: InputSanitizer, pii_redactor: PIIRedactor):
+        self.input_sanitizer = input_sanitizer
+        self.pii_redactor = pii_redactor
+
+    def validate(self, text: str) -> str:
+        sanitized = self.input_sanitizer.sanitize(text)
+        redacted = self.pii_redactor.redact(sanitized)
+        return redacted
+
+
+class OutputValidatorService:
+    def __init__(self, output_validator: OutputValidator):
+        self.output_validator = output_validator
+
+    def validate(self, text: str) -> str:
+        return self.output_validator.validate(text)
 
 
 class RagService:

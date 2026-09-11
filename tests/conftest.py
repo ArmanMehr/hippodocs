@@ -192,6 +192,16 @@ class FakeSplitter:
         ]
 
 
+class FakePIIRedactor:
+    def redact(self, text: str) -> str:
+        return text
+
+
+class FakeInputSanitizer:
+    def sanitize(self, text: str) -> str:
+        return text
+
+
 class FakeEmbedder:
     def __init__(self):
         self.model_id = "model_id"

@@ -4,6 +4,11 @@ import httpx
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
+from app.adapters.security import (
+    LocalPresidioPIIRedactor,
+    LocalPresidioRegexOutputValidator,
+    RegexInputSanitizer,
+)
 from app.adapters.text_embedder import (
     LangchainEmbedder,
     LangChainInMemoryCacheBackedEmbedder,
@@ -13,9 +18,18 @@ from app.adapters.text_embedder import (
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
 from app.configs import get_settings
 from app.exceptions import ValidationError
-from app.services.ports import LLMChat, TextEmbedder, TextSplitter
+from app.services.ports import (
+    InputSanitizer,
+    LLMChat,
+    OutputValidator,
+    PIIRedactor,
+    TextEmbedder,
+    TextSplitter,
+)
 from app.services.rag_service import (
     DocumentIngestionService,
+    FileReaderService,
+    InputValidatorService,
     RagService,
     WorkspaceService,
 )
@@ -129,7 +143,7 @@ def create_text_splitter() -> TextSplitter:
     )
 
 
-def create_file_readers() -> FileReaderRegistry:
+def create_file_reader_registry() -> FileReaderRegistry:
     registry = FileReaderRegistry()
     registry.register("pdf", PdfReader())
     registry.register("md", MarkdownReader())
@@ -137,8 +151,35 @@ def create_file_readers() -> FileReaderRegistry:
     return registry
 
 
+def create_file_reader() -> FileReaderService:
+    registry = create_file_reader_registry()
+    return FileReaderService(registry)
+
+
+def create_input_sanitizer() -> InputSanitizer:
+    return RegexInputSanitizer()
+
+
+def create_pii_redactor() -> PIIRedactor:
+    return LocalPresidioPIIRedactor()
+
+
+def create_input_validator() -> InputValidatorService:
+    input_sanitizer = create_input_sanitizer()
+    pii_redactor = create_pii_redactor()
+    return InputValidatorService(input_sanitizer, pii_redactor)
+
+
+def create_output_validator() -> OutputValidator:
+    return LocalPresidioRegexOutputValidator()
+
+
 def create_uow() -> UnitOfWork:
     return SQLAlchemyUnitOfWork()
+
+
+def create_workspace_service(uow: UnitOfWork | None = None) -> WorkspaceService:
+    return WorkspaceService(uow=uow or create_uow())
 
 
 def create_ingestion_service(uow: UnitOfWork | None = None) -> DocumentIngestionService:
@@ -162,7 +203,3 @@ def create_rag_service(
         top_k=s.TOP_K,
         chat_prompt=LangchainPromptTemplate(s.RAG_PROMPT_TEMPLATE),
     )
-
-
-def create_workspace_service(uow: UnitOfWork | None = None) -> WorkspaceService:
-    return WorkspaceService(uow=uow or create_uow())

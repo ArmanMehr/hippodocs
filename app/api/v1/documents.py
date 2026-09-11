@@ -1,9 +1,9 @@
 from fastapi import APIRouter, File, Path, Query, Request, UploadFile, status
 
-from app.adapters.file_reader import FileReaderRegistry
 from app.api.dependencies import (
-    file_readers_dep,
+    file_reader_dep,
     ingestion_service_dep,
+    input_validator_dep,
     workspace_service_dep,
 )
 from app.configs import get_settings
@@ -14,7 +14,12 @@ from app.schemas import (
     DocumentListSchema,
     DocumentSchema,
 )
-from app.services.rag_service import DocumentIngestionService, WorkspaceService
+from app.services.rag_service import (
+    DocumentIngestionService,
+    FileReaderService,
+    InputValidatorService,
+    WorkspaceService,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -50,7 +55,8 @@ def upload_document(
     request: Request,
     workspace_id: int = Path(...),
     file: UploadFile = File(...),  # noqa: B008
-    file_readers: FileReaderRegistry = file_readers_dep,
+    file_reader: FileReaderService = file_reader_dep,
+    input_validator: InputValidatorService = input_validator_dep,
     ingestion_service: DocumentIngestionService = ingestion_service_dep,
 ):
     if not file.filename:
@@ -59,20 +65,17 @@ def upload_document(
     if file.size is not None and file.size > get_settings().MAX_FILESIZE:
         raise FileTooLarge()
 
-    extension = file.filename.rsplit(".", 1)[-1].lower()
-    reader = file_readers.get(extension)
+    text = file_reader.read(file.file, file.filename)
+    title = file_reader.get_filename_no_ext(file.filename)
 
-    content = file.file.read()
-    title = file.filename.rsplit(".", 1)[0]
+    text = input_validator.validate(text)
+    title = input_validator.validate(title)
 
-    document_id = ingestion_service.add_document(
-        reader=reader,
-        file_data=content,
-        workspace_id=workspace_id,
-        title=title,
+    document_id, title, text = ingestion_service.add_document(
+        text=text, workspace_id=workspace_id, title=title
     )
 
-    return AddDocumentResponseSchema(document_id=document_id, title=title, text=content)
+    return AddDocumentResponseSchema(document_id=document_id, title=title, text=text)
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

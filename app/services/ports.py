@@ -29,3 +29,15 @@ class LLMChat(Protocol):
 
 class PromptTemplate(Protocol):
     def format(self, **kwargs: str) -> str: ...
+
+
+class InputSanitizer(Protocol):
+    def sanitize(self, text: str) -> str: ...
+
+
+class PIIRedactor(Protocol):
+    def redact(self, text: str) -> str: ...
+
+
+class OutputValidator(Protocol):
+    def validate(self, answer: str) -> str: ...

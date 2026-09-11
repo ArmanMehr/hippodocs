@@ -71,6 +71,14 @@ class ValidationError(AppError):
     error_code = "validation_error"
 
 
+class SuspiciousInputError(ValidationError):
+    error_code = "suspicious_input"
+
+
+class SuspiciousOutputError(ValidationError):
+    error_code = "suspicious_output"
+
+
 class UnsupportedFileType(ValidationError):
     error_code = "unsupported_file_type"
 

@@ -1,7 +1,7 @@
 import pytest
 
 from app.adapters.llm import LangchainPromptTemplate
-from app.configs import DEFAULT_RAG_PROMPT
+from app.configs import get_settings
 from app.domain.models import Chunk, Content, Document, Embedding
 from app.services.rag_service import RagService, WorkspaceNotFound
 from app.services.uow import UnitOfWork
@@ -20,7 +20,7 @@ def rag_service(uow: UnitOfWork, llm: FakeLLMChat) -> RagService:
         embedder=FakeEmbedder(),
         llm=llm,
         top_k=2,
-        chat_prompt=LangchainPromptTemplate(DEFAULT_RAG_PROMPT),
+        chat_prompt=LangchainPromptTemplate(get_settings().RAG_PROMPT_TEMPLATE),
     )
 
 

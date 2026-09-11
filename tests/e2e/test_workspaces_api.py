@@ -7,14 +7,14 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from app.api.dependencies import (
-    get_file_readers,
+    get_file_reader,
     get_ingestion_service,
     get_rag_service,
     get_workspace_service,
 )
 from app.main import app
 from app.services.factory import (
-    create_file_readers,
+    create_file_reader,
     create_ingestion_service,
     create_rag_service,
     create_workspace_service,
@@ -39,12 +39,12 @@ def client() -> TestClient:
     rag_service = create_rag_service(
         uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
     )
-    file_readers = create_file_readers()
+    file_readers = create_file_reader()
 
     app.dependency_overrides[get_workspace_service] = lambda: workspace_service
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
     app.dependency_overrides[get_rag_service] = lambda: rag_service
-    app.dependency_overrides[get_file_readers] = lambda: file_readers
+    app.dependency_overrides[get_file_reader] = lambda: file_readers
 
     return TestClient(app)
 
