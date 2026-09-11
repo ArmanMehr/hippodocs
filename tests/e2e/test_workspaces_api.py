@@ -3,8 +3,11 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from httpx import Response
+from pytest_mock import MockerFixture
+from starlette.requests import Request
 
 from app.api.dependencies import (
     get_file_reader,
@@ -19,6 +22,8 @@ from app.services.factory import (
     create_rag_service,
     create_workspace_service,
 )
+from app.exceptions import FileTooLarge, MissingFilename, UnsupportedFileType
+from app.api.v1.documents import upload_document
 from tests.conftest import (
     FakeEmbedder,
     FakeLLMChat,
@@ -108,6 +113,39 @@ def test_upload_document(client: TestClient) -> None:
     data = response.json()
     assert data["title"] == "test"
     assert "document_id" in data
+
+
+def test_upload_document_rejects_missing_filename() -> None:
+    with pytest.raises(MissingFilename):
+        upload_document.__wrapped__(
+            request=Request({"type": "http", "method": "POST", "path": "/"}),
+            workspace_id=1,
+            file=UploadFile(file=BytesIO(b"content"), filename=None),
+        )
+
+
+def test_upload_document_rejects_oversized_file(
+    client: TestClient, mocker: MockerFixture
+) -> None:
+    mocker.patch(
+        "app.api.v1.documents.get_settings",
+        return_value=type("Settings", (), {"MAX_FILESIZE": 3})(),
+    )
+    response = client.post(
+        "/v1/workspaces/1/documents",
+        files={"file": ("large.md", BytesIO(b"content"), "text/markdown")},
+    )
+    assert response.status_code == FileTooLarge.status_code
+    assert response.json()["error_code"] == FileTooLarge.error_code
+
+
+def test_upload_document_rejects_unsupported_type(client: TestClient) -> None:
+    response = client.post(
+        "/v1/workspaces/1/documents",
+        files={"file": ("data.docx", BytesIO(b"content"), "text/plain")},
+    )
+    assert response.status_code == UnsupportedFileType.status_code
+    assert response.json()["error_code"] == UnsupportedFileType.error_code
 
 
 def test_list_documents_in_workspace(client: TestClient) -> None:

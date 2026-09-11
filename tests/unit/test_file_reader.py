@@ -1,3 +1,4 @@
+from io import BytesIO
 from typing import Any
 
 import pytest
@@ -5,6 +6,7 @@ from pytest_mock import MockerFixture
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.exceptions import NoExtractableText, UnsupportedFileType
+from app.services.rag_service import FileReaderService
 
 
 def test_pdf_validate_empty_file():
@@ -79,3 +81,17 @@ def test_registry_supported_extensions():
     reg.register(".md", MarkdownReader())
     reg.register(".pdf", PdfReader())
     assert reg.supported_extensions == {".md", ".pdf"}
+
+
+def test_file_reader_service_reads_using_extension():
+    registry = FileReaderRegistry()
+    registry.register("md", MarkdownReader())
+    service = FileReaderService(registry)
+    assert service.read(BytesIO(b"# Document"), "README.MD") == "# Document"
+
+
+def test_file_reader_service_returns_filename_without_extension():
+    service = FileReaderService(FileReaderRegistry())
+    assert (
+        service.get_filename_no_ext("folder/report.final.md") == "folder/report.final"
+    )

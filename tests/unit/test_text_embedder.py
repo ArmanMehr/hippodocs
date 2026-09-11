@@ -4,7 +4,10 @@ import pytest
 from openai import RateLimitError as OpenAIRateLimitError
 from pytest_mock import MockerFixture
 
-from app.adapters.text_embedder import LangChainEmbedderBase
+from app.adapters.text_embedder import (
+    LangChainEmbedderBase,
+    LangChainInMemoryCacheBackedEmbedder,
+)
 from app.domain.models import Embedding
 from app.exceptions import EmbeddingError, RateLimitError
 
@@ -83,3 +86,19 @@ def test_embed_query_generic_error(mocker: MockerFixture):
 
     with pytest.raises(EmbeddingError, match="External api error"):
         embedder.embed_query("hello")
+
+
+def test_cache_backed_embedder_caches_documents_and_queries(mocker: MockerFixture):
+    underlying = mocker.MagicMock()
+    underlying.embed_documents.return_value = [[0.1, 0.2]]
+    underlying.embed_query.return_value = [0.3, 0.4]
+    source = mocker.MagicMock(embedder=underlying, model_id="test-model")
+    embedder = LangChainInMemoryCacheBackedEmbedder(source)
+
+    assert embedder.embed_texts(["hello"])[0].vector == (0.1, 0.2)
+    assert embedder.embed_texts(["hello"])[0].vector == (0.1, 0.2)
+    assert embedder.embed_query("question").vector == (0.3, 0.4)
+    assert embedder.embed_query("question").vector == (0.3, 0.4)
+
+    underlying.embed_documents.assert_called_once_with(texts=["hello"])
+    underlying.embed_query.assert_called_once_with("question")
