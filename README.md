@@ -10,7 +10,7 @@ A minimal RAG (Retrieval-Augmented Generation) API built with FastAPI, LangChain
 - [x] RESTful, versioned endpoint layout (`/v1`).
 - [x] Pluggable file readers (PDF, Markdown) via a registry.
 - [x] Add more test and increase coverage.
-- [ ] Add a security layer for PII protection, input sanitization, and output validation.
+- [x] Add a security layer for PII protection, input sanitization, and output validation.
 - [ ] Improve tracing, monitoring, logging, and observability (OpenTelemetry + Langfuse).
 - [x] Add workspace functionality so that each chat has its own sources.
 - [ ] Add source citations and references to answers.
