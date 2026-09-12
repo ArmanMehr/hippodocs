@@ -100,5 +100,5 @@ def test_cache_backed_embedder_caches_documents_and_queries(mocker: MockerFixtur
     assert embedder.embed_query("question").vector == (0.3, 0.4)
     assert embedder.embed_query("question").vector == (0.3, 0.4)
 
-    underlying.embed_documents.assert_called_once_with(texts=["hello"])
+    underlying.embed_documents.assert_called_once_with(["hello"])
     underlying.embed_query.assert_called_once_with("question")
