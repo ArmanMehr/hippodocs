@@ -13,6 +13,7 @@ from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
 from app.exceptions import AppError, error_payload
 from app.limiter import limiter
+from app.observability import flush_langfuse, initialize_langfuse
 
 level = getattr(logging, get_settings().LOG_LEVEL)
 setup_logging(level=level)
@@ -24,10 +25,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     logger.info("Starting the RAG API.")
     start_mappers()
+    initialize_langfuse()
     try:
         yield
     finally:
         logger.info("Stopping the RAG API.")
+        flush_langfuse()
 
 
 app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
@@ -55,4 +58,4 @@ if __name__ == "__main__":
     if get_settings().ENV == "dev":
         import uvicorn
 
-        uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+        uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)

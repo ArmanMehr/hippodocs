@@ -66,6 +66,12 @@ class Configs(BaseSettings):
     # API Keys
     OPENAI_API_KEY: str = "no-key"
 
+    # Langfuse
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_BASE_URL: str = ""
+    LANGFUSE_HOST: str = ""
+
     # RAG Settings
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50

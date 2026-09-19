@@ -18,6 +18,7 @@ from app.adapters.text_embedder import (
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
 from app.configs import get_settings
 from app.exceptions import ValidationError
+from app.observability import create_langchain_callback_handler, get_langfuse_client
 from app.services.ports import (
     InputSanitizer,
     LLMChat,
@@ -41,9 +42,13 @@ logger = logging.getLogger(__name__)
 def _create_langchain_embedder(
     provider: str, model_id: str, base_url: str, dimensions: int
 ) -> LangchainEmbedder:
+    langfuse_client = get_langfuse_client()
     if provider == "ollama":
         embedder: LangchainEmbedder = LangChainOllamaTextEmbedder(
-            model_id=model_id, base_url=base_url, dimensions=dimensions
+            model_id=model_id,
+            base_url=base_url,
+            dimensions=dimensions,
+            langfuse_client=langfuse_client,
         )
     elif provider == "openai":
         embedder: LangchainEmbedder = LangChainOpenAITextEmbedder(
@@ -51,23 +56,29 @@ def _create_langchain_embedder(
             base_url=base_url,
             api_key=get_settings().OPENAI_API_KEY,
             dimensions=dimensions,
+            langfuse_client=langfuse_client,
         )
     else:
         raise ValidationError(f"Unknown embedding provider: {provider}")
 
-    return LangChainInMemoryCacheBackedEmbedder(embedder)
+    return LangChainInMemoryCacheBackedEmbedder(
+        embedder, langfuse_client=langfuse_client
+    )
 
 
 def _create_llm(
     provider: str, model_id: str, base_url: str, system_prompt: str
 ) -> LLMChat:
     if provider == "openai":
+        callback_handler = create_langchain_callback_handler()
+        callbacks = [callback_handler] if callback_handler else None
         return LangChainOpenAILLMChat(
             model_id=model_id,
             base_url=base_url,
             api_key=get_settings().OPENAI_API_KEY,
             max_retries=10,
             system_prompt=system_prompt,
+            callbacks=callbacks,
         )
     raise ValidationError(f"Unknown LLM provider: {provider}")
 
