@@ -23,7 +23,7 @@ class ColorFormatter(logging.Formatter):
     _reset = "\033[0m"
 
     @override
-    def format(self, record: LogRecord):
+    def format(self, record: LogRecord) -> str:
         color = self._colors.get(record.levelname, "")
         prefix = f"{color}{record.levelname:<8}{self._reset}"
         base = super().format(record)

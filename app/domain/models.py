@@ -14,7 +14,7 @@ class EmptyVectorError(ValueError):
 class Content:
     value: str
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.value.strip():
             raise EmptyContentError("Chunk content cannot be empty or whitespace.")
 
@@ -24,7 +24,7 @@ class Workspace:
     name: str = field(default="Untitled Workspace")
 
     @property
-    def attribures(self) -> tuple[str, ...]:
+    def attributes(self) -> tuple[str, ...]:
         return ("name",)
 
 
@@ -48,7 +48,7 @@ class Embedding:
     vector: tuple[float, ...]
     model_id: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.vector is not None and len(self.vector) == 0:
             raise EmptyVectorError("Embedding vector cannot be empty.")
 
@@ -56,7 +56,7 @@ class Embedding:
             raise ValueError("model_id cannot be an empty string or whitespace.")
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         return len(self.vector)
 
 

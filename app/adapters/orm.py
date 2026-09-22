@@ -126,5 +126,5 @@ def start_mappers() -> None:
     )
 
 
-def clear_mappers():
+def clear_mappers() -> None:
     mapper_registry.dispose()

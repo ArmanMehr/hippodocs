@@ -81,7 +81,7 @@ class SQLAlchemyWorkspaceRepository:
         ws = self.get(workspace_id)
         if ws is None:
             return
-        for attr in new_workspace.attribures:
+        for attr in new_workspace.attributes:
             setattr(ws, attr, getattr(new_workspace, attr))
 
     def delete(self, workspace_id: int) -> None:

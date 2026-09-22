@@ -28,7 +28,7 @@ class RegexInputSanitizer:
         ("bypass_restrictions", r"bypass\s+(all\s+)?restrictions"),
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._patterns = [
             (name, re.compile(p, re.IGNORECASE)) for name, p in self.INJECTION_PATTERNS
         ]
@@ -61,7 +61,7 @@ class LocalPresidioPIIRedactor:
         "LOCATION",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._analyzer = AnalyzerEngine()
         self._anonymizer = AnonymizerEngine()
 
@@ -102,7 +102,7 @@ class LocalPresidioRegexOutputValidator:
         "CREDIT_CARD",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._analyzer = AnalyzerEngine()
         self._secret_patterns = [
             (name, re.compile(p, re.IGNORECASE)) for name, p in self.SECRET_PATTERNS
