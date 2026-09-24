@@ -12,6 +12,7 @@ from app.exceptions import (
     SuspiciousInputError,
     SuspiciousOutputError,
 )
+from app.observability import observe
 
 logger = getLogger(__name__)
 
@@ -40,6 +41,7 @@ class RegexInputSanitizer:
                 return True
         return False
 
+    @observe(name="input-sanitize", as_type="chain")
     def sanitize(self, text: str) -> str:
         if self.is_suspicious(text):
             raise SuspiciousInputError("Suspicious input detected")
@@ -53,7 +55,6 @@ class RegexInputSanitizer:
 
 class LocalPresidioPIIRedactor:
     PII_ENTITIES: ClassVar[list[str]] = [
-        "PERSON",
         "EMAIL_ADDRESS",
         "PHONE_NUMBER",
         "CREDIT_CARD",
@@ -65,6 +66,7 @@ class LocalPresidioPIIRedactor:
         self._analyzer = AnalyzerEngine()
         self._anonymizer = AnonymizerEngine()
 
+    @observe(name="pii-redact", as_type="chain")
     def redact(self, text: str) -> str:
         results = self._analyzer.analyze(
             text=text,
@@ -108,6 +110,7 @@ class LocalPresidioRegexOutputValidator:
             (name, re.compile(p, re.IGNORECASE)) for name, p in self.SECRET_PATTERNS
         ]
 
+    @observe(name="output-validate", as_type="chain")
     def validate(self, answer: str) -> str:
         for name, pattern in self._secret_patterns:
             if pattern.search(answer):

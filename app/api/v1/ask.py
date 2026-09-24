@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 
 from app.api.dependencies import rag_service_dep
 from app.limiter import limiter
+from app.observability import observe
 from app.schemas import AskChatSchema, ChatResponseSchema
 from app.services.rag_service import RagService
 
@@ -10,6 +11,7 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/ask", tags=["ask"])
 
 @router.post("/", response_model=ChatResponseSchema)
 @limiter.limit("30/minute")
+@observe(name="ask-question", as_type="chain")
 def ask_question(
     request: Request,
     workspace_id: int,

@@ -9,6 +9,7 @@ from app.api.dependencies import (
 from app.configs import get_settings
 from app.exceptions import FileTooLarge, MissingFilename
 from app.limiter import limiter
+from app.observability import observe
 from app.schemas import (
     AddDocumentResponseSchema,
     DocumentListSchema,
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
     "/documents", status_code=status.HTTP_200_OK, response_model=DocumentListSchema
 )
 @limiter.limit("120/minute")
+@observe(name="list-documents", as_type="chain")
 def get_documents(
     request: Request,
     workspace_id: int = Path(...),
@@ -51,6 +53,7 @@ def get_documents(
     response_model=AddDocumentResponseSchema,
 )
 @limiter.limit("10/minute")
+@observe(name="upload-document", as_type="chain")
 def upload_document(
     request: Request,
     workspace_id: int = Path(...),
@@ -80,6 +83,7 @@ def upload_document(
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
+@observe(name="delete-document", as_type="chain")
 def delete_document(
     request: Request,
     workspace_id: int = Path(...),

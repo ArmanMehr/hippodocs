@@ -159,6 +159,7 @@ class DocumentIngestionService:
             self.uow.chunks.save_all(chunks)
             self.uow.commit()
 
+    @observe(name="ingest-workspace", as_type="chain")
     def ingest_workspace(self, workspace_id: int) -> None:
         with self.uow:
             if self.uow.workspaces.get(workspace_id) is None:

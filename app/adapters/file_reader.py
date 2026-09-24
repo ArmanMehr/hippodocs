@@ -1,6 +1,7 @@
 from liteparse import LiteParse
 
 from app.exceptions import NoExtractableText, UnsupportedFileType
+from app.observability import observe
 from app.services.ports import FileReader
 
 
@@ -11,6 +12,7 @@ class PdfReader:
         if not header.startswith(b"%PDF-"):
             raise UnsupportedFileType("Only PDF files are supported")
 
+    @observe(name="read-pdf", as_type="chain")
     def read(self, content: bytes) -> str:
         self.validate(content, content[:5])
 
@@ -35,6 +37,7 @@ class MarkdownReader:
         if not content:
             raise UnsupportedFileType("Empty file")
 
+    @observe(name="read-markdown", as_type="chain")
     def read(self, content: bytes) -> str:
         self.validate(content, b"")
         text = content.decode("utf-8")
