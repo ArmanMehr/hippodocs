@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app import REQUEST_ID_VAR, setup_logging
+from app import REQUEST_ID_REGEX, REQUEST_ID_VAR, setup_logging
 from app.adapters.orm import start_mappers
 from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
@@ -44,8 +44,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 @app.middleware("http")
 async def request_id_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    req_id = uuid.uuid4().hex
+):
+    req_id = request.headers.get("X-Request-ID", "").strip()
+    if not (req_id and REQUEST_ID_REGEX.fullmatch(req_id)):
+        req_id = str(uuid.uuid4())
+
     token = REQUEST_ID_VAR.set(req_id)
     try:
         response = await call_next(request)

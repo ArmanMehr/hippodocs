@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from logging import LogRecord
@@ -9,6 +10,7 @@ from typing import override
 
 from app.configs import get_settings
 
+REQUEST_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 REQUEST_ID_VAR: ContextVar[str] = ContextVar("request_id", default="-")
 
 
