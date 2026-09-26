@@ -9,7 +9,7 @@ from typing import override
 
 from app.configs import get_settings
 
-request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+REQUEST_ID_VAR: ContextVar[str] = ContextVar("request_id", default="-")
 
 
 class ColorFormatter(logging.Formatter):
@@ -39,7 +39,7 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
             "module": record.module,
             "function": record.funcName,
-            "request_id": request_id_var.get(),
+            "request_id": REQUEST_ID_VAR.get(),
         }
         if hasattr(record, "extra_data"):
             log_obj.update(record.extra_data)

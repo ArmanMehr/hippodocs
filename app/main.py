@@ -1,13 +1,15 @@
 import logging
+import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app import setup_logging
+from app import REQUEST_ID_VAR, setup_logging
 from app.adapters.orm import start_mappers
 from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
@@ -37,6 +39,20 @@ app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
+
+
+@app.middleware("http")
+async def request_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    req_id = uuid.uuid4().hex
+    token = REQUEST_ID_VAR.set(req_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+    finally:
+        REQUEST_ID_VAR.reset(token)
 
 
 @app.exception_handler(AppError)
