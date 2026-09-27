@@ -19,7 +19,7 @@ def add_workspace(
     request: Request,
     payload: WorkspaceCreateSchema,
     workspace_service: WorkspaceService = workspace_service_dep,
-):
+) -> WorkspaceSchema:
     workspace_id = workspace_service.new_workspace(name=payload.name)
     return WorkspaceSchema(name=payload.name, workspace_id=workspace_id)
 
@@ -31,7 +31,7 @@ def list_workspaces(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     workspace_service: WorkspaceService = workspace_service_dep,
-):
+) -> WorkspaceListSchema:
     workspaces, total = workspace_service.get_workspaces(skip, limit)
     ws_schemas = [
         WorkspaceSchema(workspace_id=ws.workspace_id, name=ws.name)  # type: ignore[attr-defined]
@@ -46,7 +46,7 @@ def get_workspace(
     request: Request,
     workspace_id: int,
     workspace_service: WorkspaceService = workspace_service_dep,
-):
+) -> WorkspaceSchema:
     workspace = workspace_service.get_workspace(workspace_id)
     if workspace is None:
         raise WorkspaceNotFound(workspace_id)

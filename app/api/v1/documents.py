@@ -36,7 +36,7 @@ def get_documents(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     workspace_service: WorkspaceService = workspace_service_dep,
-):
+) -> DocumentListSchema:
     documents, total = workspace_service.list_documents_in_workspace(
         workspace_id, skip=skip, limit=limit
     )
@@ -61,7 +61,7 @@ def upload_document(
     file_reader: FileReaderService = file_reader_dep,
     input_validator: InputValidatorService = input_validator_dep,
     ingestion_service: DocumentIngestionService = ingestion_service_dep,
-):
+) -> AddDocumentResponseSchema:
     if not file.filename:
         raise MissingFilename()
 

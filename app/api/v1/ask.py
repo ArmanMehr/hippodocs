@@ -17,6 +17,6 @@ def ask_question(
     workspace_id: int,
     payload: AskChatSchema,
     rag_service: RagService = rag_service_dep,
-):
+) -> ChatResponseSchema:
     answer = rag_service.query(workspace_id, payload.question)
     return ChatResponseSchema(content=answer)
