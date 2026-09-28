@@ -13,12 +13,11 @@ from app.adapters.repository import (
 )
 from app.configs import get_settings
 
-DEFAULT_SESSION_FACTORY = sessionmaker(
-    create_engine(
-        get_settings().DATABASE_URL,
-        isolation_level="REPEATABLE READ",
-    )
+engine = create_engine(
+    get_settings().DATABASE_URL,
+    isolation_level="REPEATABLE READ",
 )
+DEFAULT_SESSION_FACTORY = sessionmaker(bind=engine)
 
 
 class UnitOfWork(Protocol):

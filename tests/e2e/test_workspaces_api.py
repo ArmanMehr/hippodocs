@@ -185,8 +185,9 @@ def test_delete_document(client: TestClient) -> None:
 
     files = {"file": ("test.md", BytesIO(b"Content to delete"), "text/markdown")}
     upload_resp = client.post(f"/v1/workspaces/{ws_id}/documents", files=files)
-    doc_id = upload_resp.json()["document_id"]
+    assert upload_resp.status_code == 201
 
+    doc_id = upload_resp.json()["document_id"]
     response = client.delete(f"/v1/workspaces/{ws_id}/documents/{doc_id}")
     assert response.status_code == 204
 
