@@ -1,6 +1,5 @@
-import logging
-
 import httpx
+import structlog
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
@@ -36,7 +35,7 @@ from app.services.rag_service import (
 )
 from app.services.uow import SQLAlchemyUnitOfWork, UnitOfWork
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _create_langchain_embedder(

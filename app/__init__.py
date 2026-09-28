@@ -1,84 +1,57 @@
-import json
 import logging
 import re
-from contextvars import ContextVar
-from datetime import UTC, datetime
-from logging import LogRecord
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import override
+import sys
 
-from app.configs import get_settings
+import structlog
 
 REQUEST_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
-REQUEST_ID_VAR: ContextVar[str] = ContextVar("request_id", default="-")
 
 
-class ColorFormatter(logging.Formatter):
-    _colors = {  # noqa
-        "DEBUG": "\033[36m",  # Cyan
-        "INFO": "\033[32m",  # Green
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[41m",  # White on Red
-    }
-    _reset = "\033[0m"
+def configure_logging(level: int = logging.INFO, json_logs: bool = True) -> None:
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+    ]
 
-    @override
-    def format(self, record: LogRecord) -> str:
-        color = self._colors.get(record.levelname, "")
-        prefix = f"{color}{record.levelname:<8}{self._reset}"
-        base = super().format(record)
-        return f"{prefix} {base}"
+    if json_logs:
+        final_processors = [
+            structlog.processors.dict_tracebacks,
+            structlog.processors.JSONRenderer(),
+        ]
+    else:
+        final_processors = [structlog.dev.ConsoleRenderer(colors=True)]
 
-
-class JSONFormatter(logging.Formatter):
-    @override
-    def format(self, record: LogRecord) -> str:
-        log_obj = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "request_id": REQUEST_ID_VAR.get(),
-        }
-        if hasattr(record, "extra_data"):
-            log_obj.update(record.extra_data)
-
-        if record.exc_info:
-            log_obj["exception"] = self.formatException(record.exc_info)
-
-        return json.dumps(log_obj, ensure_ascii=False)
-
-
-def setup_logging(level: int = logging.INFO) -> None:
-    root_logger = logging.getLogger()
-
-    settings = get_settings()
-    is_debug = settings.ENV == "dev"
-
-    log_dir = Path("logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    logfile = log_dir / ("dev.log.jsonl" if is_debug else "app.log.jsonl")
-
-    console_handler = logging.StreamHandler()
-
-    file_handler = RotatingFileHandler(
-        logfile,
-        maxBytes=50 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
-    console_handler.setFormatter(ColorFormatter(fmt="%(message)s"))
-    file_handler.setFormatter(JSONFormatter())
 
-    root_logger.setLevel(level)
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            *final_processors,
+        ],
+    )
+
+    root_logger = logging.getLogger()
     root_logger.handlers.clear()
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(level)
 
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
-        logger = logging.getLogger(name)
-        logger.handlers.clear()
-        logger.propagate = True
+        logging.getLogger(name).handlers.clear()
+        logging.getLogger(name).propagate = True
+
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False

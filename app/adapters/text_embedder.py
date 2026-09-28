@@ -1,9 +1,10 @@
 import hashlib
-import logging
+import time
 from collections.abc import Sequence
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Protocol
 
+import structlog
 from langchain.embeddings import Embeddings as LangChainEmbeddings
 from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.stores import InMemoryStore
@@ -18,7 +19,7 @@ from app.domain.models import Embedding
 from app.exceptions import EmbeddingError, RateLimitError
 from app.services.ports import TextEmbedder
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LangchainEmbedder(TextEmbedder, Protocol):
@@ -50,10 +51,13 @@ class LangChainEmbedderBase:
         )
 
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
+        start_time = time.perf_counter()
+        text_count = len(texts)
+
         try:
             with self._trace_embedding(
                 name="embed-documents",
-                input_data={"documents": texts, "document_count": len(texts)},
+                input_data={"documents": texts, "document_count": text_count},
             ) as observation:
                 vectors = self._embedder.embed_documents(texts=list(texts))
 
@@ -66,45 +70,58 @@ class LangChainEmbedderBase:
                     )
 
                 return [
-                    Embedding(
-                        vector=tuple(vector),
-                        model_id=self.model_id,
-                    )
+                    Embedding(vector=tuple(vector), model_id=self.model_id)
                     for vector in vectors
                 ]
+
         except OpenAIRateLimitError as e:
-            logger.warning("Embedding rate limit exceeded: %s", e)
+            logger.warning(
+                "embedding_rate_limit_exceeded",
+                operation="embed_texts",
+                model=self.model_id,
+                text_count=text_count,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
             raise RateLimitError() from e
+
         except Exception as e:
-            logger.exception("Embedding failed")
-            raise EmbeddingError("External api error") from e
+            logger.exception(
+                "embedding_failed",
+                operation="embed_texts",
+                model=self.model_id,
+                text_count=text_count,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
+            raise EmbeddingError() from e
 
     def embed_query(self, text: str) -> Embedding:
+        start_time = time.perf_counter()
         try:
             with self._trace_embedding(
-                name="embed-query",
-                input_data={"query_text": text},
+                name="embed-query", input_data={"query_text": text}
             ) as observation:
                 vector = self._embedder.embed_query(text=text)
-
                 if observation is not None:
-                    observation.update(
-                        output={
-                            "dimensions": len(vector),
-                        }
-                    )
-
-                return Embedding(
-                    vector=tuple(vector),
-                    model_id=self.model_id,
-                )
+                    observation.update(output={"dimensions": len(vector)})
+                return Embedding(vector=tuple(vector), model_id=self.model_id)
 
         except OpenAIRateLimitError as e:
-            logger.warning("Embedding rate limit exceeded: %s", e)
+            logger.warning(
+                "embedding_rate_limit_exceeded",
+                operation="embed_query",
+                model=self.model_id,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
             raise RateLimitError() from e
+
         except Exception as e:
-            logger.exception("Embedding failed")
-            raise EmbeddingError("External api error") from e
+            logger.exception(
+                "embedding_failed",
+                operation="embed_query",
+                model=self.model_id,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
+            raise EmbeddingError() from e
 
 
 class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
@@ -142,13 +159,11 @@ class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
         langfuse_client: Langfuse | None = None,
     ) -> None:
         super().__init__(langfuse_client=langfuse_client)
-
         self._embedder = OllamaEmbeddings(
             model=model_id,
             base_url=base_url,
             dimensions=dimensions,
         )
-
         self.model_id = model_id
 
     @property

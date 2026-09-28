@@ -1,10 +1,11 @@
 from collections.abc import Sequence
-from logging import getLogger
 from typing import BinaryIO
+
+import structlog
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
 from app.domain.models import Chunk, Content, Document, Workspace
-from app.exceptions import DocumentNotFound, DocumentProcessingError, WorkspaceNotFound
+from app.exceptions import DocumentNotFound, WorkspaceNotFound
 from app.observability import observe
 from app.services.ports import (
     InputSanitizer,
@@ -17,7 +18,7 @@ from app.services.ports import (
 )
 from app.services.uow import UnitOfWork
 
-logger = getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WorkspaceService:
@@ -36,7 +37,7 @@ class WorkspaceService:
         with self.uow:
             document = self.uow.documents.get(document_id)
             if document is None:
-                raise DocumentNotFound(document_id)
+                raise DocumentNotFound()
         return document
 
     def get_workspace(self, workspace_id: int) -> Workspace | None:
@@ -66,7 +67,7 @@ class WorkspaceService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise WorkspaceNotFound(workspace_id)
+                raise WorkspaceNotFound()
 
             document = Document(content=Content(text), workspace=workspace, title=title)
             self.uow.documents.add(document)
@@ -86,10 +87,10 @@ class WorkspaceService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise WorkspaceNotFound(workspace_id)
+                raise WorkspaceNotFound()
             document = self.uow.documents.get(document_id)
             if document is None or document.workspace.workspace_id != workspace_id:  # type: ignore[attr-defined]
-                raise DocumentNotFound(document_id)
+                raise DocumentNotFound()
             self.uow.documents.delete(document_id)
             self.uow.commit()
 
@@ -127,7 +128,7 @@ class DocumentIngestionService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise WorkspaceNotFound(workspace_id)
+                raise WorkspaceNotFound()
 
             document = Document(
                 content=Content(text),
@@ -146,7 +147,7 @@ class DocumentIngestionService:
         with self.uow:
             document = self.uow.documents.get(document_id=document_id)
             if document is None:
-                raise DocumentProcessingError(document_id)
+                raise DocumentNotFound()
 
             contents = self.splitter.split_text(document.content.value)
             if not contents:
@@ -163,7 +164,7 @@ class DocumentIngestionService:
     def ingest_workspace(self, workspace_id: int) -> None:
         with self.uow:
             if self.uow.workspaces.get(workspace_id) is None:
-                raise WorkspaceNotFound(workspace_id)
+                raise WorkspaceNotFound()
 
             documents, _ = self.uow.documents.list_unpreprocessed_by_workspace(
                 workspace_id
@@ -230,7 +231,7 @@ class RagService:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
-                raise WorkspaceNotFound(workspace_id)
+                raise WorkspaceNotFound()
             query_embedding = self.embedder.embed_query(query_text)
             found_chunks = self.uow.chunks.find_similar_in_workspace(
                 workspace_id=workspace_id,

@@ -49,7 +49,7 @@ def get_workspace(
 ) -> WorkspaceSchema:
     workspace = workspace_service.get_workspace(workspace_id)
     if workspace is None:
-        raise WorkspaceNotFound(workspace_id)
+        raise WorkspaceNotFound()
     return WorkspaceSchema(
         workspace_id=workspace.workspace_id,  # type: ignore[attr-defined]
         name=workspace.name,

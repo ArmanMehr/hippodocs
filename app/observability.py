@@ -1,12 +1,12 @@
-import logging
 import os
 
+import structlog
 from langfuse import Langfuse, get_client, observe
 from langfuse.langchain import CallbackHandler
 
 from app.configs import get_settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 _SDK_INITIALIZED = False
@@ -23,7 +23,7 @@ def initialize_langfuse() -> None:
     base_url = settings.LANGFUSE_BASE_URL or settings.LANGFUSE_HOST
 
     if not public_key or not secret_key or not base_url:
-        logger.warning("Langfuse credentials not configured; tracing disabled")
+        logger.warning("langfuse_not_configured", tracing_enabled=False)
         return
 
     # Set environment variables required by Langfuse SDK and OpenTelemetry
@@ -37,14 +37,14 @@ def initialize_langfuse() -> None:
     try:
         client = get_client()
         if client.auth_check():
-            logger.info("Langfuse client initialized and authenticated")
+            logger.info("langfuse_initialized", authenticated=True)
             _SDK_INITIALIZED = True
         else:
-            logger.warning("Langfuse authentication failed; tracing disabled")
+            logger.warning("langfuse_authentication_failed", tracing_enabled=False)
             _SDK_INITIALIZED = False
             return
-    except Exception as e:  # noqa
-        logger.error("Failed to initialize Langfuse: %s", e)
+    except Exception:
+        logger.exception("langfuse_initialization_failed")
         _SDK_INITIALIZED = False
         return
 

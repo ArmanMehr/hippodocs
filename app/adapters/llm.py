@@ -1,7 +1,7 @@
-import logging
 from collections.abc import Sequence
 from typing import Any
 
+import structlog
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
@@ -11,7 +11,7 @@ from pydantic import SecretStr
 
 from app.exceptions import LLMError, RateLimitError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LangChainOpenAILLMChat:
@@ -35,10 +35,7 @@ class LangChainOpenAILLMChat:
             max_retries=max_retries,
         )
         prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                ("user", "{input}"),
-            ]
+            [("system", system_prompt), ("user", "{input}")]
         )
         self._chain = prompt | model | StrOutputParser()
 
@@ -48,12 +45,24 @@ class LangChainOpenAILLMChat:
             if self._callbacks:
                 config = {"callbacks": self._callbacks}
             return self._chain.invoke({"input": query}, config=config)
+
         except OpenAIRateLimitError as e:
-            logger.warning("LLM rate limit exceeded: %s", e)
+            logger.warning(
+                "llm_rate_limit_exceeded",
+                operation="invoke",
+                model=self.model_id,
+                query_count=len(query),
+            )
             raise RateLimitError() from e
+
         except Exception as e:
-            logger.error("LLM invocation failed: %s", e)
-            raise LLMError("External api error") from e
+            logger.exception(
+                "llm_invocation_failed",
+                operation="invoke",
+                model=self.model_id,
+                query_count=len(query),
+            )
+            raise LLMError() from e
 
 
 class LangchainPromptTemplate:

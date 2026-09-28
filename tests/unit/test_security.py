@@ -9,7 +9,7 @@ from app.adapters.security import (
     LocalPresidioRegexOutputValidator,
     RegexInputSanitizer,
 )
-from app.exceptions import SuspiciousInputError, SuspiciousOutputError
+from app.exceptions import SuspiciousInputError
 
 RedactorFixture = tuple[LocalPresidioPIIRedactor, MagicMock, MagicMock]
 ValidatorFixture = tuple[LocalPresidioRegexOutputValidator, MagicMock]
@@ -120,10 +120,7 @@ def test_presidio_regex_output_validator_rejects_secret_patterns(
     mocked_validator: ValidatorFixture, answer: str
 ) -> None:
     validator, mock_analyzer = mocked_validator
-    with pytest.raises(
-        SuspiciousOutputError, match="Potential secret detected in model output"
-    ):
-        validator.validate(answer)
+    assert validator.validate(answer) == "[CONTENT BLOCKED]"
     mock_analyzer.analyze.assert_not_called()
 
 
@@ -157,8 +154,8 @@ def test_presidio_regex_output_validator_checks_secrets_before_pii(
     mocked_validator: ValidatorFixture,
 ) -> None:
     validator, mock_analyzer = mocked_validator
-    with pytest.raises(
-        SuspiciousOutputError, match="Potential secret detected in model output"
-    ):
+    assert (
         validator.validate("password is sk-abcdefghijklmnopqrstuvwxyz")
+        == "[CONTENT BLOCKED]"
+    )
     mock_analyzer.analyze.assert_not_called()

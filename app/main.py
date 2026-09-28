@@ -1,37 +1,41 @@
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.exc import InterfaceError, OperationalError
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app import REQUEST_ID_REGEX, REQUEST_ID_VAR, setup_logging
+from app import REQUEST_ID_REGEX, configure_logging
 from app.adapters.orm import start_mappers
 from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
-from app.exceptions import AppError, error_payload
+from app.exceptions import AppError, DatabaseUnavailable, error_payload
 from app.limiter import limiter
 from app.observability import flush_langfuse, initialize_langfuse
 
 level = getattr(logging, get_settings().LOG_LEVEL)
-setup_logging(level=level)
+json_logs = get_settings().ENV == "prd"
+configure_logging(level=level, json_logs=json_logs)
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    logger.info("Starting the RAG API.")
+    logger.info("api_starting")
     start_mappers()
     initialize_langfuse()
     try:
         yield
     finally:
-        logger.info("Stopping the RAG API.")
+        logger.info("api_stopping")
         flush_langfuse()
 
 
@@ -42,24 +46,79 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 
 
 @app.middleware("http")
-async def request_id_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-):
-    req_id = request.headers.get("X-Request-ID", "").strip()
-    if not (req_id and REQUEST_ID_REGEX.fullmatch(req_id)):
-        req_id = str(uuid.uuid4())
+async def request_logging_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    structlog.contextvars.clear_contextvars()
+    request_id = request.headers.get("X-Request-ID", "").strip()
+    if not request_id or not REQUEST_ID_REGEX.fullmatch(request_id):
+        request_id = uuid.uuid4().hex
 
-    token = REQUEST_ID_VAR.set(req_id)
+    structlog.contextvars.bind_contextvars(
+        request_id=request_id,
+    )
+    start_time = time.perf_counter()
     try:
         response = await call_next(request)
-        response.headers["X-Request-ID"] = req_id
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            "http_request_completed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        response.headers["X-Request-ID"] = request_id
         return response
+
+    except (OperationalError, InterfaceError) as exc:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.warning(
+            "database_unavailable",
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms,
+            reason=str(exc.orig),
+        )
+        error = DatabaseUnavailable()
+        response = JSONResponse(
+            status_code=error.status_code, content=error_payload(error)
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+    except Exception:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.exception(
+            "http_request_failed",
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms,
+        )
+        response = JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "error_code": "internal_error",
+            },
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+
     finally:
-        REQUEST_ID_VAR.reset(token)
+        structlog.contextvars.clear_contextvars()
 
 
 @app.exception_handler(AppError)
-async def app_error_handler(_request: Request, exception: AppError) -> JSONResponse:
+async def app_error_handler(request: Request, exception: AppError) -> JSONResponse:
+    logger.warning(
+        "application_error",
+        error_code=exception.error_code,
+        method=request.method,
+        path=request.url.path,
+        status_code=exception.status_code,
+    )
     return JSONResponse(
         status_code=exception.status_code, content=error_payload(exception)
     )
@@ -77,4 +136,6 @@ if __name__ == "__main__":
     if get_settings().ENV == "dev":
         import uvicorn
 
-        uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+        uvicorn.run(
+            "app.main:app", host="0.0.0.0", port=8000, reload=False, access_log=False
+        )

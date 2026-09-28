@@ -1,3 +1,4 @@
+import os
 from io import BytesIO
 from typing import Any
 
@@ -7,6 +8,7 @@ from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from httpx import Response
 from pytest_mock import MockerFixture
+from sqlalchemy.exc import OperationalError
 from starlette.requests import Request
 
 from app.api.dependencies import (
@@ -15,6 +17,13 @@ from app.api.dependencies import (
     get_rag_service,
     get_workspace_service,
 )
+from app.api.v1.documents import upload_document
+from app.exceptions import (
+    DatabaseUnavailable,
+    FileTooLarge,
+    MissingFilename,
+    UnsupportedFileType,
+)
 from app.main import app
 from app.services.factory import (
     create_file_reader,
@@ -22,13 +31,18 @@ from app.services.factory import (
     create_rag_service,
     create_workspace_service,
 )
-from app.exceptions import FileTooLarge, MissingFilename, UnsupportedFileType
-from app.api.v1.documents import upload_document
 from tests.conftest import (
     FakeEmbedder,
     FakeLLMChat,
     FakeUnitOfWork,
 )
+
+# Disable langfuse in tests
+os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["LANGFUSE_HOST"] = ""
+os.environ["LANGFUSE_BASE_URL"] = ""
 
 
 @pytest.fixture
@@ -195,3 +209,20 @@ def test_ask_question(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert "content" in data
+
+
+def test_unreachable_database_returns_503(client: TestClient) -> None:
+    class _UnreachableWorkspaceRepository:
+        def get(self, workspace_id: int) -> None:
+            _ = workspace_id
+            raise OperationalError("SELECT 1", {}, ConnectionError("refused"))
+
+    uow = FakeUnitOfWork()
+    uow.workspaces = _UnreachableWorkspaceRepository()  # type: ignore[assignment]
+    app.dependency_overrides[get_rag_service] = lambda: create_rag_service(
+        uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
+    )
+    response = client.post("/v1/workspaces/2/ask", json={"question": "hi"})
+
+    assert response.status_code == DatabaseUnavailable.status_code
+    assert response.json()["error_code"] == DatabaseUnavailable.error_code

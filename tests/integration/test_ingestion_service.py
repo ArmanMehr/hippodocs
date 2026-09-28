@@ -1,9 +1,9 @@
 import pytest
 
 from app.domain.models import Chunk
+from app.exceptions import DocumentNotFound
 from app.services.rag_service import (
     DocumentIngestionService,
-    DocumentProcessingError,
     WorkspaceNotFound,
 )
 from app.services.uow import UnitOfWork
@@ -36,7 +36,7 @@ def ingested_document(document_id: int, uow: UnitOfWork) -> int:
 
 
 def test_ingest_unknown_document_raises_error(uow: UnitOfWork):
-    with pytest.raises(DocumentProcessingError):
+    with pytest.raises(DocumentNotFound):
         get_ingestion_service(uow).ingest_document(document_id=999)
 
 

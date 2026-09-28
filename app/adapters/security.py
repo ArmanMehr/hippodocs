@@ -1,7 +1,7 @@
 import re
-from logging import getLogger
 from typing import ClassVar
 
+import structlog
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities.engine.recognizer_result import (
@@ -10,11 +10,10 @@ from presidio_anonymizer.entities.engine.recognizer_result import (
 
 from app.exceptions import (
     SuspiciousInputError,
-    SuspiciousOutputError,
 )
 from app.observability import observe
 
-logger = getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RegexInputSanitizer:
@@ -31,26 +30,36 @@ class RegexInputSanitizer:
 
     def __init__(self) -> None:
         self._patterns = [
-            (name, re.compile(p, re.IGNORECASE)) for name, p in self.INJECTION_PATTERNS
+            (name, re.compile(pattern, re.IGNORECASE))
+            for name, pattern in self.INJECTION_PATTERNS
         ]
 
     def is_suspicious(self, text: str) -> bool:
+        return any(pattern.search(text) for _, pattern in self._patterns)
+
+    def _suspicious_pattern(self, text: str) -> str | None:
         for name, pattern in self._patterns:
             if pattern.search(text):
-                logger.warning("Suspicious pattern detected: %s", name)
-                return True
-        return False
+                return name
+        return None
 
     @observe(name="input-sanitize", as_type="chain")
     def sanitize(self, text: str) -> str:
-        if self.is_suspicious(text):
-            raise SuspiciousInputError("Suspicious input detected")
+        pattern_name = self._suspicious_pattern(text)
+        if pattern_name is not None:
+            logger.warning(
+                "suspicious_information_input",
+                pattern=pattern_name,
+            )
+            raise SuspiciousInputError()
+
         text = re.sub(r"[-]{3,}", "", text)
         text = re.sub(r"[=]{3,}", "", text)
         text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
         text = re.sub(r"\s+", " ", text).strip()
         text = text.replace("{{", "{ {").replace("}}", "} }")
-        return text.strip()
+
+        return text
 
 
 class LocalPresidioPIIRedactor:
@@ -77,12 +86,12 @@ class LocalPresidioPIIRedactor:
             text=text,
             analyzer_results=[
                 AnonymizerRecognizerResult(
-                    entity_type=r.entity_type,
-                    start=r.start,
-                    end=r.end,
-                    score=r.score,
+                    entity_type=result.entity_type,
+                    start=result.start,
+                    end=result.end,
+                    score=result.score,
                 )
-                for r in results
+                for result in results
             ],
         )
         return anonymized.text
@@ -107,24 +116,33 @@ class LocalPresidioRegexOutputValidator:
     def __init__(self) -> None:
         self._analyzer = AnalyzerEngine()
         self._secret_patterns = [
-            (name, re.compile(p, re.IGNORECASE)) for name, p in self.SECRET_PATTERNS
+            (name, re.compile(pattern, re.IGNORECASE))
+            for name, pattern in self.SECRET_PATTERNS
         ]
 
     @observe(name="output-validate", as_type="chain")
     def validate(self, answer: str) -> str:
+        suspicious_patterns = []
         for name, pattern in self._secret_patterns:
             if pattern.search(answer):
-                logger.error("Secret pattern detected: %s", name)
-                raise SuspiciousOutputError("Potential secret detected in model output")
+                suspicious_patterns.append(name)
+
+        if suspicious_patterns:
+            logger.warning(
+                "suspicious_information_in_model_output",
+                patterns=sorted(set(suspicious_patterns)),
+            )
+            return "[CONTENT BLOCKED]"
 
         results = self._analyzer.analyze(
-            text=answer,
-            language="en",
-            entities=self.PII_ENTITIES,
+            text=answer, language="en", entities=self.PII_ENTITIES
         )
 
         if results:
-            logger.error("PII detected in model output")
+            logger.warning(
+                "pii_detected_in_model_output",
+                entity_types=sorted({result.entity_type for result in results}),
+            )
             return "[CONTENT BLOCKED]"
 
         return answer
