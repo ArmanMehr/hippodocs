@@ -1,82 +1,38 @@
 # HippoDocs
 
-HippoDocs is a self-hosted retrieval-augmented generation (RAG) API. It stores documents in PostgreSQL with pgvector, retrieves relevant chunks, and uses an OpenAI-compatible or Ollama model to answer questions.
+HippoDocs is a self-hosted API for asking questions about your documents. It stores document chunks in PostgreSQL with pgvector, retrieves relevant chunks for each question, and sends them to an OpenAI-compatible or Ollama language model.
 
-The API is built with FastAPI, SQLAlchemy, LangChain, and structlog. It supports PDF and Markdown ingestion, optional Langfuse tracing, request IDs, rate limiting, PII redaction, prompt-injection checks, and output validation.
+The API uses FastAPI and supports PDF and Markdown uploads, configurable embedding and language model providers, optional Langfuse tracing, and input and output checks for common security and privacy risks.
 
-## Current status
+## Requirements
 
-- Version: `0.0.1`
-- Python: `3.13+`
-- The application is under development.
-- Docker Compose currently provides the PostgreSQL/pgvector database. The API itself runs locally.
+- Python 3.13 or later
+- [uv](https://docs.astral.sh/uv/)
+- Docker Compose
+- An embedding model and a chat model from Ollama or an OpenAI-compatible service
 
-## Quick start
+## Run locally
 
-Install [uv](https://docs.astral.sh/uv/) and make sure Docker is available, then install the project dependencies:
+Install dependencies and create a local environment file:
 
 ```bash
 uv sync
+cp .env.example .env
 ```
 
-Create a `.env` file in the project root. At minimum, configure the database and the models you want to use:
-
-```dotenv
-DATABASE_URL=postgresql+psycopg2://username:password123@localhost:5432/vector_db
-
-EMBEDDING_PROVIDER=ollama
-EMBEDDING_BASE_URL=http://localhost:11434
-EMBEDDING_MODEL=<embedding-model>
-
-LLM_PROVIDER=openai
-LLM_BASE_URL=http://localhost:3001/v1
-LLM_MODEL=<chat-model>
-OPENAI_API_KEY=no-key
-```
-
-Start PostgreSQL with pgvector and apply the migrations:
+Edit `.env` with your PostgreSQL URL and model provider settings. Then start PostgreSQL with pgvector, apply the database migrations, and run the API:
 
 ```bash
 docker compose up -d db
 uv run alembic upgrade head
-```
-
-Start the API:
-
-```bash
 uv run python -m app.main
 ```
 
-The development server listens on `http://localhost:8000`. OpenAPI documentation is available at `/docs`.
-
-## Configuration
-
-Settings are read from environment variables or `.env`. Important settings include:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `ENV` | `dev` | Runtime environment. Use `prd` for JSON logs. |
-| `LOG_LEVEL` | `DEBUG` | Root log level. |
-| `DATABASE_URL` | empty | SQLAlchemy PostgreSQL connection URL. |
-| `EMBEDDING_PROVIDER` | `ollama` | Primary embedding provider. |
-| `EMBEDDING_BASE_URL` | `http://localhost:11434` | Primary embedding endpoint. |
-| `EMBEDDING_MODEL` | empty | Primary embedding model. |
-| `LLM_PROVIDER` | `openai` | Primary chat provider. |
-| `LLM_BASE_URL` | `http://localhost:3001/v1` | OpenAI-compatible chat endpoint. |
-| `LLM_MODEL` | empty | Chat model. |
-| `OPENAI_API_KEY` | `no-key` | API key for OpenAI-compatible services. |
-| `MAX_FILESIZE` | `10485760` | Maximum upload size in bytes. |
-| `CHUNK_SIZE` | `512` | Document chunk size. |
-| `CHUNK_OVERLAP` | `50` | Chunk overlap. |
-| `TOP_K` | `25` | Number of chunks retrieved for a question. |
-
-Both embedding and LLM providers support optional fallback settings: `EMBEDDING_FALLBACK_PROVIDER`, `EMBEDDING_FALLBACK_BASE_URL`, `EMBEDDING_FALLBACK_MODEL`, `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_BASE_URL`, and `LLM_FALLBACK_MODEL`.
-
-Langfuse tracing is disabled unless `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and either `LANGFUSE_BASE_URL` or `LANGFUSE_HOST` are configured.
+The API listens at `http://localhost:8000`. Interactive API documentation is available at `http://localhost:8000/docs`.
 
 ## API
 
-All application endpoints are under `/v1`.
+All application routes use the `/v1` prefix.
 
 | Method | Path | Description |
 |---|---|---|
@@ -87,57 +43,34 @@ All application endpoints are under `/v1`.
 | `POST` | `/v1/workspaces/{workspace_id}/documents` | Upload a PDF or Markdown document |
 | `GET` | `/v1/workspaces/{workspace_id}/documents` | List workspace documents |
 | `DELETE` | `/v1/workspaces/{workspace_id}/documents/{document_id}` | Delete a document |
-| `POST` | `/v1/workspaces/{workspace_id}/ask/` | Ask a question using workspace documents |
-| `GET` | `/health` | Health check |
+| `POST` | `/v1/workspaces/{workspace_id}/ask/` | Ask a question about workspace documents |
+| `GET` | `/health` | Check API health |
 
-Requests may include an `X-Request-ID` header. If it is missing or invalid, the API generates one and returns it in the response.
+## Configuration
 
-### Error responses
+The application reads settings from environment variables or `.env`. The example file lists provider and Langfuse settings. Core settings include:
 
-Application exceptions use a consistent response shape:
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | empty | PostgreSQL connection URL |
+| `EMBEDDING_PROVIDER` | `ollama` | Embedding provider, `ollama` or `openai` |
+| `EMBEDDING_BASE_URL` | `http://localhost:11434` | Embedding service URL |
+| `EMBEDDING_MODEL` | empty | Embedding model name |
+| `LLM_PROVIDER` | `openai` | Chat provider, `ollama` or `openai` |
+| `LLM_BASE_URL` | `http://localhost:3001/v1` | Chat service URL |
+| `LLM_MODEL` | empty | Chat model name |
+| `OPENAI_API_KEY` | `no-key` | API key for OpenAI-compatible services |
+| `MAX_FILESIZE` | `10485760` | Maximum upload size in bytes |
+| `CHUNK_SIZE` | `512` | Document chunk size |
+| `CHUNK_OVERLAP` | `50` | Overlap between document chunks |
+| `TOP_K` | `25` | Number of chunks retrieved per question |
 
-```json
-{
-  "detail": "Workspace not found",
-  "error_code": "workspace_not_found",
-  "timestamp": "2026-09-28T10:00:00+00:00"
-}
-```
+Both embedding and chat providers accept optional fallback settings. Langfuse tracing starts when its public key, secret key, and base URL are configured.
 
-The exception hierarchy includes workspace and document lookup errors, file validation errors, rate-limit errors, database-unavailable errors, and upstream embedding or LLM errors.
+## Project status
 
-## Security and observability
+HippoDocs is under development. The Compose configuration starts the database; run the API separately with the command above.
 
-- Input is checked for common prompt-injection patterns.
-- PII is redacted during document and question validation.
-- Model output is checked for secrets and selected PII before it is returned.
-- Requests use structured logs with request IDs, status codes, paths, and duration.
-- Provider rate limits and upstream failures are translated into application exceptions.
-- Langfuse tracing is available for API calls, ingestion, retrieval, embedding, LLM, and security operations.
+## License
 
-## Project layout
-
-```text
-app/
-├── api/v1/       # Versioned FastAPI routes
-├── adapters/     # Database, repository, model, file, and security adapters
-├── domain/       # Domain models and invariants
-├── services/     # Use cases and service ports
-├── migrations/   # Alembic migrations
-├── exceptions.py # Application exception hierarchy and error payloads
-├── observability.py # Langfuse integration and tracing helpers
-└── main.py       # FastAPI application, middleware, logging, and lifespan
-tests/
-├── unit/
-├── integration/
-└── e2e/
-```
-
-## Planned work
-
-- Add source citations to answers.
-- Move request and provider work to an asynchronous architecture.
-- Add user registration, authentication, and authorization.
-- Add a Streamlit UI.
-- Containerize the API alongside the database.
-- Add continuous integration.
+See [LICENCE](LICENCE).
