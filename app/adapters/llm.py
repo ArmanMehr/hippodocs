@@ -6,10 +6,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langchain_openai.chat_models import ChatOpenAI
+from openai import APITimeoutError
 from openai import RateLimitError as OpenAIRateLimitError
 from pydantic import SecretStr
 
-from app.exceptions import LLMError, RateLimitError
+from app.exceptions import LLMError, LLMTimeoutError, RateLimitError
 
 logger = structlog.get_logger(__name__)
 
@@ -54,6 +55,15 @@ class LangChainOpenAILLMChat:
                 query_count=len(query),
             )
             raise RateLimitError() from e
+
+        except APITimeoutError as e:
+            logger.warning(
+                "llm_request_timeout",
+                operation="invoke",
+                model=self.model_id,
+                query_count=len(query),
+            )
+            raise LLMTimeoutError() from e
 
         except Exception as e:
             logger.exception(

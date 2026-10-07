@@ -1,6 +1,7 @@
 import logging
 import re
 import sys
+from pathlib import Path
 
 import structlog
 
@@ -43,10 +44,40 @@ def configure_logging(level: int = logging.INFO, json_logs: bool = True) -> None
 
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-    root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+    # OLD Codes
+    # handler = logging.StreamHandler(sys.stdout)
+    # handler.setFormatter(formatter)
+    # root_logger.addHandler(handler)
+
+    # Human-readable terminal output when JSON logging is enabled.
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    if json_logs:
+        console_formatter = structlog.stdlib.ProcessorFormatter(
+            foreign_pre_chain=shared_processors,
+            processors=[
+                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                structlog.dev.ConsoleRenderer(colors=True),
+            ],
+        )
+        console_handler.setFormatter(console_formatter)
+    else:
+        console_handler.setFormatter(formatter)
+
+    root_logger.addHandler(console_handler)
+
+    # JSON Lines file output.
+    Path("logs").mkdir(parents=True, exist_ok=True)
+    if json_logs:
+        file_handler = logging.FileHandler(
+            "logs/log.jsonc",
+            mode="a",
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
         logging.getLogger(name).handlers.clear()

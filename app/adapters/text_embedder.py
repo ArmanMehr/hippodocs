@@ -11,12 +11,13 @@ from langchain_core.stores import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from langfuse import Langfuse
+from openai import APITimeoutError
 from pydantic import SecretStr
 
 from app.adapters.llm import OpenAIRateLimitError
 from app.configs import get_settings
 from app.domain.models import Embedding
-from app.exceptions import EmbeddingError, RateLimitError
+from app.exceptions import EmbeddingError, EmbeddingTimeoutError, RateLimitError
 from app.services.ports import TextEmbedder
 
 logger = structlog.get_logger(__name__)
@@ -84,6 +85,16 @@ class LangChainEmbedderBase:
             )
             raise RateLimitError() from e
 
+        except APITimeoutError as e:
+            logger.warning(
+                "embedding_request_timeout",
+                operation="embed_texts",
+                model=self.model_id,
+                text_count=text_count,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
+            raise EmbeddingTimeoutError() from e
+
         except Exception as e:
             logger.exception(
                 "embedding_failed",
@@ -92,7 +103,7 @@ class LangChainEmbedderBase:
                 text_count=text_count,
                 duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
-            raise EmbeddingError() from e
+            raise EmbeddingError("External embedding API error") from e
 
     def embed_query(self, text: str) -> Embedding:
         start_time = time.perf_counter()
@@ -113,6 +124,15 @@ class LangChainEmbedderBase:
                 duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise RateLimitError() from e
+
+        except APITimeoutError as e:
+            logger.warning(
+                "embedding_request_timeout",
+                operation="embed_query",
+                model=self.model_id,
+                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+            )
+            raise EmbeddingTimeoutError() from e
 
         except Exception as e:
             logger.exception(

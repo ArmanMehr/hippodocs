@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from openai import RateLimitError as OpenAIRateLimitError
+from openai import APITimeoutError, RateLimitError as OpenAIRateLimitError
 from pytest_mock import MockerFixture
 
 from app.adapters.text_embedder import (
@@ -9,7 +9,11 @@ from app.adapters.text_embedder import (
     LangChainInMemoryCacheBackedEmbedder,
 )
 from app.domain.models import Embedding
-from app.exceptions import EmbeddingError, RateLimitError
+from app.exceptions import (
+    EmbeddingError,
+    EmbeddingTimeoutError,
+    RateLimitError,
+)
 
 
 def _make_embedder(mocker: MockerFixture) -> LangChainEmbedderBase:
@@ -45,12 +49,21 @@ def test_embed_texts_rate_limit(mocker: MockerFixture):
         embedder.embed_texts(["hello"])
 
 
+def test_embed_texts_timeout(mocker: MockerFixture):
+    embedder = _make_embedder(mocker)
+    embed_mock: Any = embedder._embedder.embed_documents
+    embed_mock.side_effect = APITimeoutError(request=mocker.MagicMock())
+
+    with pytest.raises(EmbeddingTimeoutError, match="Embedding request timed out"):
+        embedder.embed_texts(["hello"])
+
+
 def test_embed_texts_generic_error(mocker: MockerFixture):
     embedder = _make_embedder(mocker)
     embed_mock: Any = embedder._embedder.embed_documents
     embed_mock.side_effect = ConnectionError("timeout")
 
-    with pytest.raises(EmbeddingError, match="External api error"):
+    with pytest.raises(EmbeddingError, match="External embedding API error"):
         embedder.embed_texts(["hello"])
 
 
@@ -76,6 +89,15 @@ def test_embed_query_rate_limit(mocker: MockerFixture):
     )
 
     with pytest.raises(RateLimitError):
+        embedder.embed_query("hello")
+
+
+def test_embed_query_timeout(mocker: MockerFixture):
+    embedder = _make_embedder(mocker)
+    query_mock: Any = embedder._embedder.embed_query
+    query_mock.side_effect = APITimeoutError(request=mocker.MagicMock())
+
+    with pytest.raises(EmbeddingTimeoutError, match="Embedding request timed out"):
         embedder.embed_query("hello")
 
 

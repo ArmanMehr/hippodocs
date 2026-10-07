@@ -32,7 +32,7 @@ router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 @observe(name="list-documents", as_type="chain")
 def get_documents(
     request: Request,
-    workspace_id: int = Path(...),
+    workspace_id: int = Path(gt=0),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     workspace_service: WorkspaceService = workspace_service_dep,

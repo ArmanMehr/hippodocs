@@ -2,7 +2,32 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from typing import Any, override
+
+from fastapi.exceptions import RequestValidationError
+
+
+def _iso_now() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat()
+
+
+@dataclass(frozen=True)
+class ErrorPayload:
+    detail: str
+    error_code: str
+    timestamp: str = _iso_now()
+
+    def asdict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def get_fastapi_exception_payload(exc: RequestValidationError) -> dict[str, Any]:
+    message = "Validation errors:"
+    for error in exc.errors():
+        message += f"\nField: {error['loc']}, Error: {error['msg']}"
+    payload = ErrorPayload(detail=message, error_code="request_validation_error")
+    return payload.asdict()
 
 
 class AppError(Exception):
@@ -23,16 +48,8 @@ class AppError(Exception):
         return self.detail or super().__str__()
 
 
-def _iso_now() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat()
-
-
 def error_payload(exc: AppError) -> Mapping[str, Any]:
-    return {
-        "detail": exc.detail,
-        "error_code": exc.error_code,
-        "timestamp": _iso_now(),
-    }
+    return ErrorPayload(detail=exc.detail or "", error_code=exc.error_code).asdict()
 
 
 class WorkspaceNotFound(AppError):
@@ -47,19 +64,21 @@ class DocumentNotFound(AppError):
     detail = "Document not found"
 
 
-# FIX: Add more specific exceptions
-class DocumentProcessingError(AppError):
-    status_code = 400
-    error_code = "document_processing_error"
-
-    def __init__(self) -> None:
-        super().__init__("Document could not be processed")
+class FileProcessingError(AppError):
+    status_code = 503
+    error_code = "file_processing_error"
+    detail = "File could not be processed"
 
 
 class DatabaseUnavailable(AppError):
     status_code = 503
     error_code = "database_unavailable"
     detail = "Database is unavailable"
+
+
+class ProviderConnectionError(AppError):
+    status_code = 503
+    error_code = "provider_unavailable"
 
 
 class RateLimitError(AppError):
@@ -95,15 +114,29 @@ class MissingFilename(ValidationError):
     error_code = "missing_filename"
 
 
-# TODO: Add more specific exceptions
-class EmbeddingError(AppError):
+class ExternalAPIError(AppError):
+    status_code = 502
+    error_code = "external_api_error"
+    detail = "External api error"
+
+
+class EmbeddingError(ExternalAPIError):
     status_code = 502
     error_code = "embedding_error"
-    detail = "External api error"
 
 
-# TODO: Add more specific exceptions
-class LLMError(AppError):
+class EmbeddingTimeoutError(EmbeddingError):
+    status_code = 504
+    error_code = "embedding_timeout"
+    detail = "Embedding request timed out"
+
+
+class LLMError(ExternalAPIError):
     status_code = 502
     error_code = "llm_error"
-    detail = "External api error"
+
+
+class LLMTimeoutError(LLMError):
+    status_code = 504
+    error_code = "llm_timeout"
+    detail = "LLM request timed out"

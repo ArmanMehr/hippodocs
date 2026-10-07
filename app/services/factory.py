@@ -16,7 +16,7 @@ from app.adapters.text_embedder import (
 )
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
 from app.configs import get_settings
-from app.exceptions import ValidationError
+from app.exceptions import ProviderConnectionError, ValidationError
 from app.observability import create_langchain_callback_handler, get_langfuse_client
 from app.services.ports import (
     InputSanitizer,
@@ -87,6 +87,7 @@ def _ping(url: str) -> bool:
         httpx.get(url, timeout=5)
         return True
     except Exception:  # noqa
+        logger.warning("url_ping_failed", url=url)
         return False
 
 
@@ -114,8 +115,7 @@ def create_text_embedder() -> TextEmbedder:
         if _ping(fb_url):
             return fb
 
-    logger.warning("All embedding providers unhealthy, returning primary anyway")
-    return primary
+    raise ProviderConnectionError("Could not connect to any provider.")
 
 
 def create_llm_chat() -> LLMChat:

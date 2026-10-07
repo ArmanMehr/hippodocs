@@ -5,10 +5,10 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import InterfaceError, OperationalError
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -16,7 +16,13 @@ from app import REQUEST_ID_REGEX, configure_logging
 from app.adapters.orm import start_mappers
 from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
-from app.exceptions import AppError, DatabaseUnavailable, error_payload
+from app.exceptions import (
+    AppError,
+    DatabaseUnavailable,
+    RateLimitError,
+    error_payload,
+    get_fastapi_exception_payload,
+)
 from app.limiter import limiter
 from app.observability import flush_langfuse, initialize_langfuse
 
@@ -40,9 +46,11 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
+
+# FIX: Change the trusted host for deployment
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
+app.add_exception_handler(RateLimitError, _rate_limit_exceeded_handler)  # type: ignore
 
 
 @app.middleware("http")
@@ -88,26 +96,37 @@ async def request_logging_middleware(
         response.headers["X-Request-ID"] = request_id
         return response
 
-    except Exception:
-        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.exception(
-            "http_request_failed",
-            method=request.method,
-            path=request.url.path,
-            duration_ms=duration_ms,
-        )
-        response = JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Internal server error",
-                "error_code": "internal_error",
-            },
-        )
-        response.headers["X-Request-ID"] = request_id
-        return response
+    # except Exception:
+    #     duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    #     logger.exception(
+    #         "http_request_failed",
+    #         method=request.method,
+    #         path=request.url.path,
+    #         duration_ms=duration_ms,
+    #     )
+    #     exc = AppError(detail="Internal server error")
+    #     response = JSONResponse(status_code=exc.status_code, content=error_payload(exc))
+    #     response.headers["X-Request-ID"] = request_id
+    #     return response
 
     finally:
         structlog.contextvars.clear_contextvars()
+
+
+@app.exception_handler(RequestValidationError)
+async def fastapi_request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    payload = get_fastapi_exception_payload(exc)
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    logger.warning(
+        "application_error",
+        error_code="request_validation_error",
+        method=request.method,
+        path=request.url.path,
+        status_code=status_code,
+    )
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 @app.exception_handler(AppError)
@@ -133,9 +152,9 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    if get_settings().ENV == "dev":
-        import uvicorn
+    # if get_settings().ENV == "dev":
+    import uvicorn
 
-        uvicorn.run(
-            "app.main:app", host="0.0.0.0", port=8000, reload=False, access_log=False
-        )
+    uvicorn.run(
+        "app.main:app", host="0.0.0.0", port=8000, reload=False, access_log=False
+    )

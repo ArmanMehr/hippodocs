@@ -2,11 +2,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from openai import RateLimitError as OpenAIRateLimitError
+from openai import APITimeoutError, RateLimitError as OpenAIRateLimitError
 from pytest_mock import MockerFixture
 
 from app.adapters.llm import LangChainOpenAILLMChat
-from app.exceptions import LLMError, RateLimitError
+from app.exceptions import LLMError, LLMTimeoutError, RateLimitError
 
 
 def _make_llm_chat(mocker: MockerFixture) -> LangChainOpenAILLMChat:
@@ -32,6 +32,15 @@ def test_invoke_rate_limit(mocker: MockerFixture):
     )
 
     with pytest.raises(RateLimitError):
+        llm_chat.invoke("Hi")
+
+
+def test_invoke_timeout(mocker: MockerFixture):
+    llm_chat = _make_llm_chat(mocker)
+    chain_mock: Any = llm_chat._chain.invoke
+    chain_mock.side_effect = APITimeoutError(request=mocker.MagicMock())
+
+    with pytest.raises(LLMTimeoutError, match="LLM request timed out"):
         llm_chat.invoke("Hi")
 
 

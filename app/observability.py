@@ -62,7 +62,10 @@ def flush_langfuse() -> None:
     """Flush all pending spans/traces to Langfuse (call before app exit)."""
     client = get_langfuse_client()
     if client is not None:
-        client.flush()
+        try:
+            client.flush()
+        except Exception:
+            logger.exception("langfuse_flush_failed", operation="flush_langfuse")
 
 
 def is_langfuse_enabled() -> bool:
