@@ -3,6 +3,7 @@ from fastapi import APIRouter, Query, Request, status
 from app.api.dependencies import workspace_service_dep
 from app.exceptions import WorkspaceNotFound
 from app.limiter import limiter
+from app.observability import observe
 from app.schemas import (
     WorkspaceCreateSchema,
     WorkspaceListSchema,
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=WorkspaceSchema)
 @limiter.limit("60/minute")
+@observe(name="add-workspace", as_type="chain")
 def add_workspace(
     request: Request,
     payload: WorkspaceCreateSchema,
@@ -26,6 +28,7 @@ def add_workspace(
 
 @router.get("/", response_model=WorkspaceListSchema)
 @limiter.limit("120/minute")
+@observe(name="list-workspaces", as_type="chain")
 def list_workspaces(
     request: Request,
     skip: int = Query(0, ge=0),
@@ -42,6 +45,7 @@ def list_workspaces(
 
 @router.get("/{workspace_id}", response_model=WorkspaceSchema)
 @limiter.limit("120/minute")
+@observe(name="get-workspace", as_type="chain")
 def get_workspace(
     request: Request,
     workspace_id: int,
@@ -58,6 +62,7 @@ def get_workspace(
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
+@observe(name="delete-workspace", as_type="chain")
 def delete_workspace(
     request: Request,
     workspace_id: int,
