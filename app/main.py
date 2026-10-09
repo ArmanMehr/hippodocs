@@ -27,8 +27,7 @@ from app.limiter import limiter
 from app.observability import flush_langfuse, initialize_langfuse
 
 level = getattr(logging, get_settings().LOG_LEVEL)
-json_logs = get_settings().ENV == "prd"
-configure_logging(level=level, json_logs=json_logs)
+configure_logging(level=level, json_logs=get_settings().LOG_JSON)
 
 logger = structlog.get_logger(__name__)
 
@@ -96,18 +95,18 @@ async def request_logging_middleware(
         response.headers["X-Request-ID"] = request_id
         return response
 
-    # except Exception:
-    #     duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-    #     logger.exception(
-    #         "http_request_failed",
-    #         method=request.method,
-    #         path=request.url.path,
-    #         duration_ms=duration_ms,
-    #     )
-    #     exc = AppError(detail="Internal server error")
-    #     response = JSONResponse(status_code=exc.status_code, content=error_payload(exc))
-    #     response.headers["X-Request-ID"] = request_id
-    #     return response
+    except Exception:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.exception(
+            "http_request_failed",
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms,
+        )
+        exc = AppError(detail="Internal server error")
+        response = JSONResponse(status_code=exc.status_code, content=error_payload(exc))
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     finally:
         structlog.contextvars.clear_contextvars()

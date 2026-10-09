@@ -39,6 +39,10 @@ class Configs(BaseSettings):
 
     ENV: Literal["dev", "prd"] = "dev"
     LOG_LEVEL: str = "DEBUG"
+    LOG_JSON: bool = False
+    LOG_FILE_PATH: str | None = "logs/log.jsonc"
+    LOG_MAX_BYTES: int = 10 * 1024 * 1024
+    LOG_BACKUP_COUNT: int = 5
 
     # PostgreSQL Database
     DATABASE_URL: str = ""

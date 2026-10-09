@@ -26,7 +26,6 @@ def initialize_langfuse() -> None:
         logger.warning("langfuse_not_configured", tracing_enabled=False)
         return
 
-    # Set environment variables required by Langfuse SDK and OpenTelemetry
     os.environ["LANGFUSE_PUBLIC_KEY"] = public_key
     os.environ["LANGFUSE_SECRET_KEY"] = secret_key
     os.environ["LANGFUSE_HOST"] = base_url

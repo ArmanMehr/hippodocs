@@ -1,5 +1,4 @@
 import hashlib
-import time
 from collections.abc import Sequence
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Protocol
@@ -52,7 +51,6 @@ class LangChainEmbedderBase:
         )
 
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
-        start_time = time.perf_counter()
         text_count = len(texts)
 
         try:
@@ -81,7 +79,6 @@ class LangChainEmbedderBase:
                 operation="embed_texts",
                 model=self.model_id,
                 text_count=text_count,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise RateLimitError() from e
 
@@ -91,7 +88,6 @@ class LangChainEmbedderBase:
                 operation="embed_texts",
                 model=self.model_id,
                 text_count=text_count,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise EmbeddingTimeoutError() from e
 
@@ -101,12 +97,10 @@ class LangChainEmbedderBase:
                 operation="embed_texts",
                 model=self.model_id,
                 text_count=text_count,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise EmbeddingError("External embedding API error") from e
 
     def embed_query(self, text: str) -> Embedding:
-        start_time = time.perf_counter()
         try:
             with self._trace_embedding(
                 name="embed-query", input_data={"query_text": text}
@@ -121,7 +115,6 @@ class LangChainEmbedderBase:
                 "embedding_rate_limit_exceeded",
                 operation="embed_query",
                 model=self.model_id,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise RateLimitError() from e
 
@@ -130,7 +123,6 @@ class LangChainEmbedderBase:
                 "embedding_request_timeout",
                 operation="embed_query",
                 model=self.model_id,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise EmbeddingTimeoutError() from e
 
@@ -139,7 +131,6 @@ class LangChainEmbedderBase:
                 "embedding_failed",
                 operation="embed_query",
                 model=self.model_id,
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
             raise EmbeddingError() from e
 
