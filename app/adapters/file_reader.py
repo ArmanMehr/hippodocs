@@ -38,7 +38,7 @@ class PdfReader:
 
         except Exception as e:
             logger.exception(
-                "embedding_rate_limit_exceeded",
+                "file_processing_failed",
                 operation="pdf_read",
                 duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
@@ -64,7 +64,7 @@ class MarkdownReader:
             text = content.decode("utf-8")
         except Exception as e:
             logger.exception(
-                "embedding_rate_limit_exceeded",
+                "file_processing_failed",
                 operation="markdown_read",
                 duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
