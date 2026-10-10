@@ -1,7 +1,8 @@
 from typing import Any
 
 import pytest
-from openai import APITimeoutError, RateLimitError as OpenAIRateLimitError
+from openai import APITimeoutError
+from openai import RateLimitError as OpenAIRateLimitError
 from pytest_mock import MockerFixture
 
 from app.adapters.text_embedder import (
