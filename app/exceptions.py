@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, override
 
 from fastapi.exceptions import RequestValidationError
@@ -16,7 +16,7 @@ def _iso_now() -> str:
 class ErrorPayload:
     detail: str
     error_code: str
-    timestamp: str = _iso_now()
+    timestamp: str = field(default_factory=_iso_now)
 
     def asdict(self) -> dict[str, Any]:
         return asdict(self)
