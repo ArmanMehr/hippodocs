@@ -125,7 +125,7 @@ class SQLAlchemyDocumentRepository:
         stmt = select(Document, func.count().over().label("total_count")).where(
             and_(
                 documents_table.c.workspace_id == workspace_id,
-                documents_table.c.is_preprocessed == False,
+                documents_table.c.is_preprocessed.is_(False),
             )
         )
         rows = self._session.execute(stmt).all()

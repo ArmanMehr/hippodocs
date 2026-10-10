@@ -1,64 +1,52 @@
 import os
+from enum import Enum, auto
 
 import structlog
-from langfuse import Langfuse, get_client, observe
+from langfuse import Langfuse, observe
 from langfuse.langchain import CallbackHandler
-
-from app.configs import get_settings
 
 logger = structlog.get_logger(__name__)
 
 
-_SDK_INITIALIZED = False
+class LangfuseState(Enum):
+    UNINITIALIZED = auto()
+    DISABLED = auto()
+    READY = auto()
+    FAILED = auto()
+
+
+_state: LangfuseState = LangfuseState.UNINITIALIZED
+_client: Langfuse | None = None
 
 
 def initialize_langfuse() -> None:
-    global _SDK_INITIALIZED
-    if _SDK_INITIALIZED:
+    global _state, _client
+
+    if _state is not LangfuseState.UNINITIALIZED:
         return
 
-    settings = get_settings()
-    public_key = settings.LANGFUSE_PUBLIC_KEY
-    secret_key = settings.LANGFUSE_SECRET_KEY
-    base_url = settings.LANGFUSE_BASE_URL or settings.LANGFUSE_HOST
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 
-    if not public_key or not secret_key or not base_url:
-        logger.warning("langfuse_not_configured", tracing_enabled=False)
+    if not public_key or not secret_key:
+        logger.warning("langfuse_not_configured")
+        _state = LangfuseState.DISABLED
         return
-
-    os.environ["LANGFUSE_PUBLIC_KEY"] = public_key
-    os.environ["LANGFUSE_SECRET_KEY"] = secret_key
-    os.environ["LANGFUSE_HOST"] = base_url
-    os.environ["LANGFUSE_BASE_URL"] = base_url
-    if getattr(settings, "ENV", None):
-        os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
 
     try:
-        client = get_client()
-        if client.auth_check():
-            logger.info("langfuse_initialized", authenticated=True)
-            _SDK_INITIALIZED = True
-        else:
-            logger.warning("langfuse_authentication_failed", tracing_enabled=False)
-            _SDK_INITIALIZED = False
-            return
+        _client = Langfuse(public_key=public_key, secret_key=secret_key)
+        _state = LangfuseState.READY
     except Exception:
         logger.exception("langfuse_initialization_failed")
-        _SDK_INITIALIZED = False
-        return
+        _state = LangfuseState.FAILED
 
 
 def get_langfuse_client() -> Langfuse | None:
-    """Return the singleton :class:`Langfuse` client, or ``None`` if disabled."""
-    if not _SDK_INITIALIZED:
-        initialize_langfuse()
-    if not _SDK_INITIALIZED:
-        return None
-    return get_client()
+    initialize_langfuse()
+    return _client
 
 
 def flush_langfuse() -> None:
-    """Flush all pending spans/traces to Langfuse (call before app exit)."""
     client = get_langfuse_client()
     if client is not None:
         try:
@@ -68,16 +56,10 @@ def flush_langfuse() -> None:
 
 
 def is_langfuse_enabled() -> bool:
-    """Return ``True`` when a real (authenticated) Langfuse client is available."""
     return get_langfuse_client() is not None
 
 
 def create_langchain_callback_handler():
-    """Build a LangChain ``CallbackHandler`` wired to the global Langfuse client.
-
-    Returns ``None`` when Langfuse is disabled so callers can safely pass it
-    into ``config={"callbacks": [...]}``.
-    """
     if not is_langfuse_enabled():
         return None
 
