@@ -1,21 +1,15 @@
 import os
 from io import BytesIO
-from typing import Any
 
-import httpx
 import pytest
 from fastapi import UploadFile
 from fastapi.testclient import TestClient
-from httpx import Response
 from pytest_mock import MockerFixture
 from sqlalchemy.exc import OperationalError
 from starlette.requests import Request
 
 from app.api.dependencies import (
-    get_file_reader,
-    get_ingestion_service,
     get_rag_service,
-    get_workspace_service,
 )
 from app.api.v1.documents import upload_document
 from app.exceptions import (
@@ -26,10 +20,7 @@ from app.exceptions import (
 )
 from app.main import app
 from app.services.factory import (
-    create_file_reader,
-    create_ingestion_service,
     create_rag_service,
-    create_workspace_service,
 )
 from tests.conftest import (
     FakeEmbedder,
@@ -43,29 +34,6 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["LANGFUSE_HOST"] = ""
 os.environ["LANGFUSE_BASE_URL"] = ""
-
-
-@pytest.fixture
-def client() -> TestClient:
-    def _mock_get(*args: Any, **kwargs: Any) -> Response:
-        return Response(status_code=200)
-
-    httpx.get = _mock_get
-    uow = FakeUnitOfWork()
-
-    workspace_service = create_workspace_service(uow=uow)
-    ingestion_service = create_ingestion_service(uow=uow)
-    rag_service = create_rag_service(
-        uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
-    )
-    file_readers = create_file_reader()
-
-    app.dependency_overrides[get_workspace_service] = lambda: workspace_service
-    app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
-    app.dependency_overrides[get_rag_service] = lambda: rag_service
-    app.dependency_overrides[get_file_reader] = lambda: file_readers
-
-    return TestClient(app)
 
 
 def test_create_workspace(client: TestClient) -> None:

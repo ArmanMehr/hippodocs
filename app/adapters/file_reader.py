@@ -1,8 +1,5 @@
-import time
-
 from liteparse import LiteParse
 
-from app import structlog
 from app.exceptions import (
     FileProcessingError,
     NoExtractableText,
@@ -10,8 +7,6 @@ from app.exceptions import (
 )
 from app.observability import observe
 from app.services.ports import FileReader
-
-logger = structlog.get_logger(__name__)
 
 
 class PdfReader:
@@ -23,7 +18,6 @@ class PdfReader:
 
     @observe(name="read-pdf", as_type="chain")
     def read(self, content: bytes) -> str:
-        start_time = time.time()
         self.validate(content, content[:5])
         try:
             parser = LiteParse(ocr_enabled=True)
@@ -37,11 +31,6 @@ class PdfReader:
             text = "\n\n".join(all_texts)
 
         except Exception as e:
-            logger.exception(
-                "file_processing_failed",
-                operation="pdf_read",
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-            )
             raise FileProcessingError() from e
 
         if not text.strip():
@@ -58,16 +47,10 @@ class MarkdownReader:
 
     @observe(name="read-markdown", as_type="chain")
     def read(self, content: bytes) -> str:
-        start_time = time.time()
         self.validate(content, b"")
         try:
             text = content.decode("utf-8")
         except Exception as e:
-            logger.exception(
-                "file_processing_failed",
-                operation="markdown_read",
-                duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-            )
             raise FileProcessingError() from e
 
         if not text.strip():

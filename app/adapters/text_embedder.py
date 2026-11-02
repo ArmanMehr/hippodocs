@@ -3,7 +3,6 @@ from collections.abc import Sequence
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Protocol
 
-import structlog
 from langchain.embeddings import Embeddings as LangChainEmbeddings
 from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.stores import InMemoryStore
@@ -18,8 +17,6 @@ from app.configs import get_settings
 from app.domain.models import Embedding
 from app.exceptions import EmbeddingError, EmbeddingTimeoutError, RateLimitError
 from app.services.ports import TextEmbedder
-
-logger = structlog.get_logger(__name__)
 
 
 class LangchainEmbedder(TextEmbedder, Protocol):
@@ -74,30 +71,12 @@ class LangChainEmbedderBase:
                 ]
 
         except OpenAIRateLimitError as e:
-            logger.warning(
-                "embedding_rate_limit_exceeded",
-                operation="embed_texts",
-                model=self.model_id,
-                text_count=text_count,
-            )
             raise RateLimitError() from e
 
         except APITimeoutError as e:
-            logger.warning(
-                "embedding_request_timeout",
-                operation="embed_texts",
-                model=self.model_id,
-                text_count=text_count,
-            )
             raise EmbeddingTimeoutError() from e
 
         except Exception as e:
-            logger.exception(
-                "embedding_failed",
-                operation="embed_texts",
-                model=self.model_id,
-                text_count=text_count,
-            )
             raise EmbeddingError("External embedding API error") from e
 
     def embed_query(self, text: str) -> Embedding:
@@ -111,27 +90,12 @@ class LangChainEmbedderBase:
                 return Embedding(vector=tuple(vector), model_id=self.model_id)
 
         except OpenAIRateLimitError as e:
-            logger.warning(
-                "embedding_rate_limit_exceeded",
-                operation="embed_query",
-                model=self.model_id,
-            )
             raise RateLimitError() from e
 
         except APITimeoutError as e:
-            logger.warning(
-                "embedding_request_timeout",
-                operation="embed_query",
-                model=self.model_id,
-            )
             raise EmbeddingTimeoutError() from e
 
         except Exception as e:
-            logger.exception(
-                "embedding_failed",
-                operation="embed_query",
-                model=self.model_id,
-            )
             raise EmbeddingError() from e
 
 

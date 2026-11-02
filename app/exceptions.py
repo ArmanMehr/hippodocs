@@ -31,14 +31,10 @@ def get_fastapi_exception_payload(exc: RequestValidationError) -> dict[str, Any]
 
 
 class AppError(Exception):
-    status_code: int = 500
-    error_code: str = "internal_error"
-    detail: str | None = None
-
     def __init__(
         self, detail: str | None = None, *, error_code: str | None = None
     ) -> None:
-        self.detail = detail or self.detail or self.__class__.__name__
+        self.detail = detail or self.detail or "Upstream service unavailable"
         if error_code is not None:
             self.error_code = error_code
         super().__init__(self.detail)
@@ -48,45 +44,57 @@ class AppError(Exception):
         return self.detail or super().__str__()
 
 
+class ServerError(AppError):
+    status_code: int = 500
+    error_code: str = "internal_error"
+    detail: str | None = None
+
+
+class ClientError(AppError):
+    status_code: int = 400
+    error_code: str = "bad_request"
+    detail: str | None = None
+
+
 def error_payload(exc: AppError) -> Mapping[str, Any]:
     return ErrorPayload(detail=exc.detail or "", error_code=exc.error_code).asdict()
 
 
-class WorkspaceNotFound(AppError):
+class WorkspaceNotFound(ClientError):
     status_code = 404
     error_code = "workspace_not_found"
     detail = "Workspace not found"
 
 
-class DocumentNotFound(AppError):
+class DocumentNotFound(ClientError):
     status_code = 404
     error_code = "document_not_found"
     detail = "Document not found"
 
 
-class FileProcessingError(AppError):
+class FileProcessingError(ServerError):
     status_code = 503
     error_code = "file_processing_error"
     detail = "File could not be processed"
 
 
-class DatabaseUnavailable(AppError):
+class DatabaseUnavailable(ServerError):
     status_code = 503
     error_code = "database_unavailable"
     detail = "Database is unavailable"
 
 
-class ProviderConnectionError(AppError):
+class ProviderConnectionError(ServerError):
     status_code = 503
     error_code = "provider_unavailable"
 
 
-class RateLimitError(AppError):
+class RateLimitError(ClientError):
     status_code = 429
     error_code = "rate_limit_exceeded"
 
 
-class ValidationError(AppError):
+class ValidationError(ClientError):
     status_code = 422
     error_code = "validation_error"
 
@@ -114,7 +122,7 @@ class MissingFilename(ValidationError):
     error_code = "missing_filename"
 
 
-class ExternalAPIError(AppError):
+class ExternalAPIError(ServerError):
     status_code = 502
     error_code = "external_api_error"
     detail = "External api error"

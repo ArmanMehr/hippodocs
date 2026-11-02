@@ -48,30 +48,12 @@ class LangChainOpenAILLMChat:
             return self._chain.invoke({"input": query}, config=config)
 
         except OpenAIRateLimitError as e:
-            logger.warning(
-                "llm_rate_limit_exceeded",
-                operation="invoke",
-                model=self.model_id,
-                query_count=len(query),
-            )
             raise RateLimitError() from e
 
         except APITimeoutError as e:
-            logger.warning(
-                "llm_request_timeout",
-                operation="invoke",
-                model=self.model_id,
-                query_count=len(query),
-            )
             raise LLMTimeoutError() from e
 
         except Exception as e:
-            logger.exception(
-                "llm_invocation_failed",
-                operation="invoke",
-                model=self.model_id,
-                query_count=len(query),
-            )
             raise LLMError() from e
 
 

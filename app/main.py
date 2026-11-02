@@ -17,9 +17,10 @@ from app.adapters.orm import start_mappers
 from app.api.v1 import router as api_v1_router
 from app.configs import get_settings
 from app.exceptions import (
-    AppError,
+    ClientError,
     DatabaseUnavailable,
     RateLimitError,
+    ServerError,
     error_payload,
     get_fastapi_exception_payload,
 )
@@ -45,6 +46,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="Simple RAG API", version="1.0.0")
+app.include_router(api_v1_router)
 
 # FIX: Change the trusted host for deployment
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
@@ -59,99 +61,67 @@ async def request_logging_middleware(
 ) -> Response:
     structlog.contextvars.clear_contextvars()
     request_id = request.headers.get("X-Request-ID", "").strip()
-    if not request_id or not REQUEST_ID_REGEX.fullmatch(request_id):
+    if not REQUEST_ID_REGEX.fullmatch(request_id):
         request_id = uuid.uuid4().hex
 
-    structlog.contextvars.bind_contextvars(
-        request_id=request_id,
-    )
+    structlog.contextvars.bind_contextvars(request_id=request_id)
     start_time = time.perf_counter()
+
     try:
         response = await call_next(request)
-        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.info(
-            "http_request_completed",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            duration_ms=duration_ms,
-        )
-        response.headers["X-Request-ID"] = request_id
-        return response
-
-    except (OperationalError, InterfaceError) as exc:
-        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.warning(
-            "database_unavailable",
-            method=request.method,
-            path=request.url.path,
-            duration_ms=duration_ms,
-            reason=str(exc.orig),
-        )
-        error = DatabaseUnavailable()
+    except Exception:
+        structlog.contextvars.bind_contextvars(error_code="internal_error")
+        logger.exception("unhandled_server_error")
+        error = ServerError(detail="Internal server error")
         response = JSONResponse(
             status_code=error.status_code, content=error_payload(error)
         )
-        response.headers["X-Request-ID"] = request_id
-        return response
 
-    except Exception:
-        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.exception(
-            "http_request_failed",
-            method=request.method,
-            path=request.url.path,
-            duration_ms=duration_ms,
-        )
-        exc = AppError(detail="Internal server error")
-        response = JSONResponse(status_code=exc.status_code, content=error_payload(exc))
-        response.headers["X-Request-ID"] = request_id
-        return response
+    logger.info(
+        "http_request_completed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+    )
+    response.headers["X-Request-ID"] = request_id
+    structlog.contextvars.clear_contextvars()
+    return response
 
-    finally:
-        structlog.contextvars.clear_contextvars()
+
+@app.exception_handler(OperationalError)
+@app.exception_handler(InterfaceError)
+async def database_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    error_code = "database_unavailable"
+    structlog.contextvars.bind_contextvars(error_code=error_code)
+    logger.error(error_code, reason=str(getattr(exc, "orig", exc)))
+    error = DatabaseUnavailable()
+    return JSONResponse(status_code=error.status_code, content=error_payload(error))
 
 
 @app.exception_handler(RequestValidationError)
 async def fastapi_request_validation_exception_handler(
-    request: Request, exc: RequestValidationError
+    _: Request, exc: RequestValidationError
 ) -> JSONResponse:
     payload = get_fastapi_exception_payload(exc)
+    structlog.contextvars.bind_contextvars(error_code="request_validation_error")
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
-    logger.warning(
-        "application_error",
-        error_code="request_validation_error",
-        method=request.method,
-        path=request.url.path,
-        status_code=status_code,
-    )
     return JSONResponse(status_code=status_code, content=payload)
 
 
-@app.exception_handler(AppError)
-async def app_error_handler(request: Request, exception: AppError) -> JSONResponse:
-    logger.warning(
-        "application_error",
-        error_code=exception.error_code,
-        method=request.method,
-        path=request.url.path,
-        status_code=exception.status_code,
-    )
-    return JSONResponse(
-        status_code=exception.status_code, content=error_payload(exception)
-    )
+@app.exception_handler(ServerError)
+async def server_error_handler(_: Request, exc: ServerError) -> JSONResponse:
+    structlog.contextvars.bind_contextvars(error_code=exc.error_code)
+    return JSONResponse(status_code=exc.status_code, content=error_payload(exc))
 
 
-app.include_router(api_v1_router)
-
-
-@app.get("/health", tags=["health"])
-async def health_check():
-    return {"status": "ok"}
+@app.exception_handler(ClientError)
+async def client_error_handler(_: Request, exc: ClientError) -> JSONResponse:
+    structlog.contextvars.bind_contextvars(error_code=exc.error_code)
+    return JSONResponse(status_code=exc.status_code, content=error_payload(exc))
 
 
 if __name__ == "__main__":
-    # if get_settings().ENV == "dev":
     import uvicorn
 
     uvicorn.run(

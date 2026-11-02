@@ -1,7 +1,10 @@
 from collections.abc import Generator, Sequence
-from typing import Self
+from typing import Any, Self
 
+import httpx
 import pytest
+from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm.session import Session, sessionmaker
@@ -12,7 +15,20 @@ from app.adapters.repository import (
     DocumentRepository,
     WorkspaceRepository,
 )
+from app.api.dependencies import (
+    get_file_reader,
+    get_ingestion_service,
+    get_rag_service,
+    get_workspace_service,
+)
 from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.main import app
+from app.services.factory import (
+    create_file_reader,
+    create_ingestion_service,
+    create_rag_service,
+    create_workspace_service,
+)
 from app.services.uow import UnitOfWork
 
 
@@ -59,6 +75,29 @@ def seed_document(uow: UnitOfWork, text: str) -> int:
         uow.documents.add(document)
         uow.commit()
         return document.document_id  # type: ignore[attr-defined]
+
+
+@pytest.fixture
+def client() -> TestClient:
+    def _mock_get(*args: Any, **kwargs: Any) -> Response:
+        return Response(status_code=200)
+
+    httpx.get = _mock_get
+    uow = FakeUnitOfWork()
+
+    workspace_service = create_workspace_service(uow=uow)
+    ingestion_service = create_ingestion_service(uow=uow)
+    rag_service = create_rag_service(
+        uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
+    )
+    file_readers = create_file_reader()
+
+    app.dependency_overrides[get_workspace_service] = lambda: workspace_service
+    app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
+    app.dependency_overrides[get_rag_service] = lambda: rag_service
+    app.dependency_overrides[get_file_reader] = lambda: file_readers
+
+    return TestClient(app)
 
 
 class FakeWorkspaceRepository:
