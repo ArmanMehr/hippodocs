@@ -8,6 +8,7 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from langfuse import propagate_attributes
 from slowapi import _rate_limit_exceeded_handler
 from sqlalchemy.exc import InterfaceError, OperationalError
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -65,6 +66,12 @@ async def request_logging_middleware(
         request_id = uuid.uuid4().hex
 
     structlog.contextvars.bind_contextvars(request_id=request_id)
+    try:
+        # TODO: Apply session_id for multi-turn chat sessions
+        propagate_attributes(metadata={"request_id": request_id})
+    except Exception:  # noqa
+        pass
+
     start_time = time.perf_counter()
 
     try:

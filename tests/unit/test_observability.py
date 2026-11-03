@@ -5,18 +5,22 @@ import pytest
 from pytest_mock import MockerFixture
 
 from app import observability
+from app.configs import get_settings
 from app.observability import LangfuseState
 
 
 @pytest.fixture(autouse=True)
 def reset_observability_state(mocker: MockerFixture) -> Generator[None]:
-    mocker.patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": ""})
-    mocker.patch.dict(os.environ, {"LANGFUSE_SECRET_KEY": ""})
+    mocker.patch.dict(
+        os.environ, {"LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": ""}
+    )
+    get_settings.cache_clear()
     observability._state = LangfuseState.UNINITIALIZED
     observability._client = None
     yield
     observability._state = LangfuseState.UNINITIALIZED
     observability._client = None
+    get_settings.cache_clear()
 
 
 def test_initialize_langfuse_warns_only_once_when_not_configured(mocker: MockerFixture):

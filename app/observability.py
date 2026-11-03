@@ -1,9 +1,10 @@
-import os
 from enum import Enum, auto
 
 import structlog
 from langfuse import Langfuse, observe
 from langfuse.langchain import CallbackHandler
+
+from app import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -25,16 +26,22 @@ def initialize_langfuse() -> None:
     if _state is not LangfuseState.UNINITIALIZED:
         return
 
-    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    s = get_settings()
+    public_key = s.LANGFUSE_PUBLIC_KEY
+    secret_key = s.LANGFUSE_SECRET_KEY
 
     if not public_key or not secret_key:
         logger.warning("langfuse_not_configured")
         _state = LangfuseState.DISABLED
         return
 
+    host = s.LANGFUSE_BASE_URL or s.LANGFUSE_HOST
+    env = s.ENV
+
     try:
-        _client = Langfuse(public_key=public_key, secret_key=secret_key)
+        _client = Langfuse(
+            public_key=public_key, secret_key=secret_key, host=host, environment=env
+        )
         _state = LangfuseState.READY
     except Exception:
         logger.exception("langfuse_initialization_failed")
@@ -52,7 +59,7 @@ def flush_langfuse() -> None:
         try:
             client.flush()
         except Exception:
-            logger.exception("langfuse_flush_failed", operation="flush_langfuse")
+            logger.exception("langfuse_flush_failed")
 
 
 def is_langfuse_enabled() -> bool:
@@ -62,7 +69,6 @@ def is_langfuse_enabled() -> bool:
 def create_langchain_callback_handler():
     if not is_langfuse_enabled():
         return None
-
     return CallbackHandler()
 
 
