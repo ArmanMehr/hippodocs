@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Request
 
-from app.api.dependencies import rag_service_dep
+from app.api.dependencies import (
+    input_validator_dep,
+    output_validator_dep,
+    rag_service_dep,
+)
 from app.limiter import limiter
 from app.observability import observe
 from app.schemas import AskChatSchema, ChatResponseSchema
-from app.services.rag_service import RagService
+from app.services.ports import OutputValidator
+from app.services.rag_service import InputValidatorService, RagService
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/ask", tags=["ask"])
 
@@ -16,7 +21,11 @@ def ask_question(
     request: Request,
     workspace_id: int,
     payload: AskChatSchema,
+    input_validator: InputValidatorService = input_validator_dep,
+    output_validator: OutputValidator = output_validator_dep,
     rag_service: RagService = rag_service_dep,
 ) -> ChatResponseSchema:
-    answer = rag_service.query(workspace_id, payload.question)
-    return ChatResponseSchema(content=answer)
+    question_val = input_validator.validate(payload.question)
+    answer = rag_service.query(workspace_id, question_val)
+    answer_val = output_validator.validate(answer)
+    return ChatResponseSchema(content=answer_val)

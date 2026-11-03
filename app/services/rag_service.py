@@ -2,11 +2,11 @@ from collections.abc import Sequence
 from typing import BinaryIO
 
 import structlog
+from langfuse import observe
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
 from app.domain.models import Chunk, Content, Document, Workspace
 from app.exceptions import DocumentNotFound, WorkspaceNotFound
-from app.observability import observe
 from app.services.ports import (
     InputSanitizer,
     LLMChat,
@@ -142,7 +142,6 @@ class DocumentIngestionService:
         self.ingest_document(document_id)
         return document_id, title, text
 
-    @observe(name="ingest-document", as_type="chain")
     def ingest_document(self, document_id: int) -> None:
         with self.uow:
             document = self.uow.documents.get(document_id=document_id)
@@ -160,7 +159,6 @@ class DocumentIngestionService:
             self.uow.chunks.save_all(chunks)
             self.uow.commit()
 
-    @observe(name="ingest-workspace", as_type="chain")
     def ingest_workspace(self, workspace_id: int) -> None:
         with self.uow:
             if self.uow.workspaces.get(workspace_id) is None:
@@ -240,7 +238,6 @@ class RagService:
             )
             return "\n".join([chunk.content.value for chunk in found_chunks])
 
-    @observe(name="rag-query", as_type="chain")
     def query(self, workspace_id: int, query_text: str) -> str:
         context = self._retrieve(workspace_id, query_text)
         prompt_text = self.chat_prompt.format(context=context, question=query_text)

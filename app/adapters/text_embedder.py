@@ -8,7 +8,7 @@ from langchain_classic.embeddings.cache import CacheBackedEmbeddings
 from langchain_core.stores import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
-from langfuse import Langfuse
+from langfuse import Langfuse, observe
 from openai import APITimeoutError
 from pydantic import SecretStr
 
@@ -47,28 +47,14 @@ class LangChainEmbedderBase:
             model=self.model_id,
         )
 
+    @observe(name="text-embedding", as_type="embedding")
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
-        text_count = len(texts)
-
         try:
-            with self._trace_embedding(
-                name="embed-documents",
-                input_data={"documents": texts, "document_count": text_count},
-            ) as observation:
-                vectors = self._embedder.embed_documents(texts=list(texts))
-
-                if observation is not None:
-                    observation.update(
-                        output={
-                            "embedding_count": len(vectors),
-                            "dimensions": len(vectors[0]) if vectors else 0,
-                        }
-                    )
-
-                return [
-                    Embedding(vector=tuple(vector), model_id=self.model_id)
-                    for vector in vectors
-                ]
+            vectors = self._embedder.embed_documents(texts=list(texts))
+            return [
+                Embedding(vector=tuple(vector), model_id=self.model_id)
+                for vector in vectors
+            ]
 
         except OpenAIRateLimitError as e:
             raise RateLimitError() from e
@@ -79,16 +65,11 @@ class LangChainEmbedderBase:
         except Exception as e:
             raise EmbeddingError("External embedding API error") from e
 
+    @observe(name="query-embedding", as_type="embedding")
     def embed_query(self, text: str) -> Embedding:
         try:
-            with self._trace_embedding(
-                name="embed-query", input_data={"query_text": text}
-            ) as observation:
-                vector = self._embedder.embed_query(text=text)
-                if observation is not None:
-                    observation.update(output={"dimensions": len(vector)})
-                return Embedding(vector=tuple(vector), model_id=self.model_id)
-
+            vector = self._embedder.embed_query(text=text)
+            return Embedding(vector=tuple(vector), model_id=self.model_id)
         except OpenAIRateLimitError as e:
             raise RateLimitError() from e
 
