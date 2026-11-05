@@ -5,7 +5,7 @@ import structlog
 from langfuse import observe
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
-from app.domain.models import Chunk, Content, Document, Workspace
+from app.domain.models import Chunk, Content, Document, Embedding, Workspace
 from app.exceptions import DocumentNotFound, WorkspaceNotFound
 from app.services.ports import (
     InputSanitizer,
@@ -195,6 +195,12 @@ class InputValidatorService:
         self.input_sanitizer = input_sanitizer
         self.pii_redactor = pii_redactor
 
+    @observe(
+        name="input-validator",
+        as_type="chain",
+        capture_input=False,
+        capture_output=True,
+    )
     def validate(self, text: str) -> str:
         sanitized = self.input_sanitizer.sanitize(text)
         redacted = self.pii_redactor.redact(sanitized)
@@ -205,6 +211,12 @@ class OutputValidatorService:
     def __init__(self, output_validator: OutputValidator):
         self.output_validator = output_validator
 
+    @observe(
+        name="output-validator",
+        as_type="chain",
+        capture_input=False,
+        capture_output=True,
+    )
     def validate(self, text: str) -> str:
         return self.output_validator.validate(text)
 
@@ -224,21 +236,39 @@ class RagService:
         self.top_k = top_k
         self.chat_prompt = chat_prompt
 
-    @observe(name="retrieve-context", as_type="retriever")
-    def _retrieve(self, workspace_id: int, query_text: str) -> str:
+    def _embed_query(self, query_text: str) -> Embedding:
+        return self.embedder.embed_query(query_text)
+
+    def _ensure_workspace(self, workspace_id: int) -> None:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
-            if workspace is None:
-                raise WorkspaceNotFound()
-            query_embedding = self.embedder.embed_query(query_text)
+        if workspace is None:
+            raise WorkspaceNotFound()
+
+    @observe(
+        name="retrieve-context",
+        as_type="retriever",
+        capture_input=False,
+        capture_output=True,
+    )
+    def _retrieve(self, workspace_id: int, query_embedding: Embedding) -> str:
+        with self.uow:
             found_chunks = self.uow.chunks.find_similar_in_workspace(
                 workspace_id=workspace_id,
                 query_vector=list(query_embedding.vector),
                 top_k=self.top_k,
             )
-            return "\n".join([chunk.content.value for chunk in found_chunks])
+        return "\n".join([chunk.content.value for chunk in found_chunks])
 
+    @observe(
+        name="rag-query",
+        as_type="chain",
+        capture_input=True,
+        capture_output=True,
+    )
     def query(self, workspace_id: int, query_text: str) -> str:
-        context = self._retrieve(workspace_id, query_text)
+        self._ensure_workspace(workspace_id)
+        query_embedding = self._embed_query(query_text)
+        context = self._retrieve(workspace_id, query_embedding)
         prompt_text = self.chat_prompt.format(context=context, question=query_text)
         return self.llm.invoke(prompt_text)

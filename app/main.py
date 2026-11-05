@@ -66,23 +66,20 @@ async def request_logging_middleware(
         request_id = uuid.uuid4().hex
 
     structlog.contextvars.bind_contextvars(request_id=request_id)
-    try:
-        # TODO: Apply session_id for multi-turn chat sessions
-        propagate_attributes(metadata={"request_id": request_id})
-    except Exception:  # noqa
-        pass
 
     start_time = time.perf_counter()
 
-    try:
-        response = await call_next(request)
-    except Exception:
-        structlog.contextvars.bind_contextvars(error_code="internal_error")
-        logger.exception("unhandled_server_error")
-        error = ServerError(detail="Internal server error")
-        response = JSONResponse(
-            status_code=error.status_code, content=error_payload(error)
-        )
+    # TODO: Add session_id for multi-turn chat sessions
+    with propagate_attributes(metadata={"request_id": request_id}):
+        try:
+            response = await call_next(request)
+        except Exception:
+            structlog.contextvars.bind_contextvars(error_code="internal_error")
+            logger.exception("unhandled_server_error")
+            error = ServerError(detail="Internal server error")
+            response = JSONResponse(
+                status_code=error.status_code, content=error_payload(error)
+            )
 
     logger.info(
         "http_request_completed",
@@ -126,6 +123,11 @@ async def server_error_handler(_: Request, exc: ServerError) -> JSONResponse:
 async def client_error_handler(_: Request, exc: ClientError) -> JSONResponse:
     structlog.contextvars.bind_contextvars(error_code=exc.error_code)
     return JSONResponse(status_code=exc.status_code, content=error_payload(exc))
+
+
+@app.get("/health", tags=["health"])
+async def health_check():
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":

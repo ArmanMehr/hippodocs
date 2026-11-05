@@ -45,7 +45,7 @@ class LangChainOpenAILLMChat:
             config: RunnableConfig | None = None
             if self._callbacks:
                 config = {"callbacks": self._callbacks}
-            return self._chain.invoke({"input": query}, config=config)
+            return str(self._chain.invoke({"input": query}, config=config))
 
         except OpenAIRateLimitError as e:
             raise RateLimitError() from e

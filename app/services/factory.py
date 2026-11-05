@@ -21,7 +21,6 @@ from app.observability import create_langchain_callback_handler, get_langfuse_cl
 from app.services.ports import (
     InputSanitizer,
     LLMChat,
-    OutputValidator,
     PIIRedactor,
     TextEmbedder,
     TextSplitter,
@@ -30,6 +29,7 @@ from app.services.rag_service import (
     DocumentIngestionService,
     FileReaderService,
     InputValidatorService,
+    OutputValidatorService,
     RagService,
     WorkspaceService,
 )
@@ -180,8 +180,9 @@ def create_input_validator() -> InputValidatorService:
     return InputValidatorService(input_sanitizer, pii_redactor)
 
 
-def create_output_validator() -> OutputValidator:
-    return LocalPresidioRegexOutputValidator()
+def create_output_validator() -> OutputValidatorService:
+    validator = LocalPresidioRegexOutputValidator()
+    return OutputValidatorService(validator)
 
 
 def create_uow() -> UnitOfWork:

@@ -47,7 +47,12 @@ class LangChainEmbedderBase:
             model=self.model_id,
         )
 
-    @observe(name="text-embedding", as_type="embedding")
+    @observe(
+        name="text-embedding",
+        as_type="embedding",
+        capture_input=False,
+        capture_output=False,
+    )
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
         try:
             vectors = self._embedder.embed_documents(texts=list(texts))
@@ -65,7 +70,12 @@ class LangChainEmbedderBase:
         except Exception as e:
             raise EmbeddingError("External embedding API error") from e
 
-    @observe(name="query-embedding", as_type="embedding")
+    @observe(
+        name="query-embedding",
+        as_type="embedding",
+        capture_input=False,
+        capture_output=False,
+    )
     def embed_query(self, text: str) -> Embedding:
         try:
             vector = self._embedder.embed_query(text=text)

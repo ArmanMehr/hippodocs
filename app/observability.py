@@ -40,7 +40,10 @@ def initialize_langfuse() -> None:
 
     try:
         _client = Langfuse(
-            public_key=public_key, secret_key=secret_key, host=host, environment=env
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host,
+            environment=env,
         )
         _state = LangfuseState.READY
     except Exception:

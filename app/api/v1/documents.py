@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, Path, Query, Request, UploadFile, status
+from langfuse import observe
 
 from app.api.dependencies import (
     file_reader_dep,
@@ -51,6 +52,12 @@ def get_documents(
     response_model=AddDocumentResponseSchema,
 )
 @limiter.limit("10/minute")
+@observe(
+    name="document-ingestion",
+    as_type="chain",
+    capture_input=False,
+    capture_output=False,
+)
 def upload_document(
     request: Request,
     workspace_id: int = Path(...),

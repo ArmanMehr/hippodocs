@@ -43,7 +43,12 @@ class RegexInputSanitizer:
                 return name
         return None
 
-    @observe(name="input-sanitize", as_type="chain")
+    @observe(
+        name="input-sanitize",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
     def sanitize(self, text: str) -> str:
         pattern_name = self._suspicious_pattern(text)
         if pattern_name is not None:
@@ -75,7 +80,12 @@ class LocalPresidioPIIRedactor:
         self._analyzer = AnalyzerEngine()
         self._anonymizer = AnonymizerEngine()
 
-    @observe(name="pii-redact", as_type="chain")
+    @observe(
+        name="pii-redact",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
     def redact(self, text: str) -> str:
         results = self._analyzer.analyze(
             text=text,
@@ -120,7 +130,12 @@ class LocalPresidioRegexOutputValidator:
             for name, pattern in self.SECRET_PATTERNS
         ]
 
-    @observe(name="output-validate", as_type="chain")
+    @observe(
+        name="output-validate",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
     def validate(self, answer: str) -> str:
         suspicious_patterns = []
         for name, pattern in self._secret_patterns:

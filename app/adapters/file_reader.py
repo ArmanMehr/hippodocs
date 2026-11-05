@@ -16,7 +16,12 @@ class PdfReader:
         if not header.startswith(b"%PDF-"):
             raise UnsupportedFileType("Only PDF files are supported")
 
-    @observe(name="read-pdf", as_type="chain")
+    @observe(
+        name="read-pdf",
+        as_type="span",
+        capture_input=False,
+        capture_output=False,
+    )
     def read(self, content: bytes) -> str:
         self.validate(content, content[:5])
         try:
@@ -45,7 +50,9 @@ class MarkdownReader:
         if not content:
             raise UnsupportedFileType("Empty file")
 
-    @observe(name="read-markdown", as_type="chain")
+    @observe(
+        name="read-markdown", as_type="span", capture_input=False, capture_output=False
+    )
     def read(self, content: bytes) -> str:
         self.validate(content, b"")
         try:
