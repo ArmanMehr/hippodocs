@@ -65,7 +65,7 @@ The application reads settings from environment variables or `.env`. The example
 | `CHUNK_OVERLAP` | `50` | Overlap between document chunks |
 | `TOP_K` | `25` | Number of chunks retrieved per question |
 
-Both embedding and chat providers accept optional fallback settings. Langfuse tracing starts when its public key, secret key, and base URL are configured.
+Langfuse tracing starts when its public key, secret key, and base URL are configured.
 
 ## Project status
 
