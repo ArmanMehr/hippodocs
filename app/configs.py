@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_RAG_PROMPT = """\
@@ -11,7 +11,6 @@ Answer the question based only on the following context:
 Question: {question}
 Answer concisely. If unsure, state 'I don't know.'
 """
-
 
 _DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant.
@@ -26,9 +25,20 @@ Security rules:
 SUPPORTED_LLM_PROVIDERS = Literal["ollama", "openai"]
 SUPPORTED_EMBEDDING_PROVIDERS = Literal["openai"]
 
+OLLAMA_BASE_URL = "http://localhost:11434"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+
 
 class Configs(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow", frozen=True)
+
+    @model_validator(mode="after")
+    def _ollama_default_base_url(self) -> "Configs":
+        if self.EMBEDDING_PROVIDER == "ollama" and not self.EMBEDDING_BASE_URL:
+            object.__setattr__(self, "EMBEDDING_BASE_URL", OLLAMA_BASE_URL)
+        if self.LLM_PROVIDER == "ollama" and not self.LLM_BASE_URL:
+            object.__setattr__(self, "LLM_BASE_URL", OLLAMA_BASE_URL)
+        return self
 
     @field_validator("RAG_PROMPT_TEMPLATE")
     @classmethod
@@ -52,13 +62,13 @@ class Configs(BaseSettings):
 
     # Embedding
     EMBEDDING_PROVIDER: SUPPORTED_EMBEDDING_PROVIDERS = "openai"
-    EMBEDDING_BASE_URL: str = "https://api.openai.com/v1"
+    EMBEDDING_BASE_URL: str = OPENAI_BASE_URL
     EMBEDDING_MODEL: str = ""
     DIMENSIONS: int = 384
 
     # LLM
     LLM_PROVIDER: SUPPORTED_LLM_PROVIDERS = "openai"
-    LLM_BASE_URL: str = "https://api.openai.com/v1"
+    LLM_BASE_URL: str = OPENAI_BASE_URL
     LLM_MODEL: str = ""
 
     LLM_MAX_RETRIES: int = 3
