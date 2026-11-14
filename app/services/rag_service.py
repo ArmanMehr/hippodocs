@@ -5,7 +5,7 @@ import structlog
 from langfuse import observe
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
-from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.domain.models import Chunk, Content, Document, Workspace
 from app.exceptions import DocumentNotFound, WorkspaceNotFound
 from app.services.ports import (
     InputSanitizer,
@@ -13,6 +13,7 @@ from app.services.ports import (
     OutputValidator,
     PIIRedactor,
     PromptTemplate,
+    Retriever,
     TextEmbedder,
     TextSplitter,
 )
@@ -153,7 +154,11 @@ class DocumentIngestionService:
                 document.mark_preprocessed()
                 return
 
-            chunks = self._embed_and_chunk_contents(document.document_id, contents)  # type: ignore[attr-defined]
+            chunks = self._embed_and_chunk_contents(
+                document.document_id,  # type: ignore[attr-defined]
+                document.workspace.workspace_id,  # type: ignore[attr-defined]
+                contents,
+            )
             document.mark_preprocessed()
 
             self.uow.chunks.save_all(chunks)
@@ -175,17 +180,27 @@ class DocumentIngestionService:
                     document.mark_preprocessed()
                     continue
 
-                chunks = self._embed_and_chunk_contents(document.document_id, contents)  # type: ignore[attr-defined]
+                chunks = self._embed_and_chunk_contents(
+                    document.document_id,  # type: ignore[attr-defined]
+                    workspace_id,  # type: ignore[attr-defined]
+                    contents,
+                )
                 document.mark_preprocessed()
                 all_chunks.extend(chunks)
 
             self.uow.chunks.save_all(all_chunks)
             self.uow.commit()
 
-    def _embed_and_chunk_contents(self, document_id: int, contents: Sequence[Content]):
+    def _embed_and_chunk_contents(
+        self, document_id: int, workspace_id: int, contents: Sequence[Content]
+    ) -> list[Chunk]:
         embeddings = self.embedder.embed_texts([c.value for c in contents])
         return [
-            Chunk(document_id=document_id, content=content).add_embedding(embedding)
+            Chunk(
+                document_id=document_id,
+                workspace_id=workspace_id,
+                content=content,
+            ).add_embedding(embedding)
             for content, embedding in zip(contents, embeddings, strict=True)
         ]
 
@@ -225,40 +240,22 @@ class RagService:
     def __init__(
         self,
         uow: UnitOfWork,
-        embedder: TextEmbedder,
+        retriever: Retriever,
         llm: LLMChat,
         top_k: int,
         chat_prompt: PromptTemplate,
     ) -> None:
         self.uow = uow
-        self.embedder = embedder
+        self.retriever = retriever
         self.llm = llm
         self.top_k = top_k
         self.chat_prompt = chat_prompt
-
-    def _embed_query(self, query_text: str) -> Embedding:
-        return self.embedder.embed_query(query_text)
 
     def _ensure_workspace(self, workspace_id: int) -> None:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
         if workspace is None:
             raise WorkspaceNotFound()
-
-    @observe(
-        name="retrieve-context",
-        as_type="retriever",
-        capture_input=False,
-        capture_output=True,
-    )
-    def _retrieve(self, workspace_id: int, query_embedding: Embedding) -> str:
-        with self.uow:
-            found_chunks = self.uow.chunks.find_similar_in_workspace(
-                workspace_id=workspace_id,
-                query_vector=list(query_embedding.vector),
-                top_k=self.top_k,
-            )
-        return "\n".join([chunk.content.value for chunk in found_chunks])
 
     @observe(
         name="rag-query",
@@ -268,7 +265,11 @@ class RagService:
     )
     def query(self, workspace_id: int, query_text: str) -> str:
         self._ensure_workspace(workspace_id)
-        query_embedding = self._embed_query(query_text)
-        context = self._retrieve(workspace_id, query_embedding)
+        chunks = self.retriever.retrieve_in_workspace(
+            workspace_id=workspace_id,
+            query_text=query_text,
+            top_k=self.top_k,
+        )
+        context = "\n".join([c.content for c in chunks])
         prompt_text = self.chat_prompt.format(context=context, question=query_text)
         return self.llm.invoke(prompt_text)

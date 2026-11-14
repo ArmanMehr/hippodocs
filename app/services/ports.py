@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from app.domain.models import Content, Embedding
+from app.domain.views import RetrievedChunkView
 
 
 class FileReader(Protocol):
@@ -41,3 +42,13 @@ class PIIRedactor(Protocol):
 
 class OutputValidator(Protocol):
     def validate(self, answer: str) -> str: ...
+
+
+class Retriever(Protocol):
+    def retrieve_in_document(
+        self, document_id: int, query_text: str, top_k: int
+    ) -> list[RetrievedChunkView]: ...
+
+    def retrieve_in_workspace(
+        self, workspace_id: int, query_text: str, top_k: int
+    ) -> list[RetrievedChunkView]: ...

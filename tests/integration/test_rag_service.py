@@ -5,7 +5,12 @@ from app.configs import get_settings
 from app.domain.models import Chunk, Content, Document, Embedding
 from app.services.rag_service import RagService, WorkspaceNotFound
 from app.services.uow import UnitOfWork
-from tests.conftest import FakeEmbedder, FakeLLMChat, seed_workspace
+from tests.conftest import (
+    FakeLLMChat,
+    FakeRetriever,
+    FakeUnitOfWork,
+    seed_workspace,
+)
 
 
 @pytest.fixture
@@ -14,10 +19,10 @@ def llm() -> FakeLLMChat:
 
 
 @pytest.fixture
-def rag_service(uow: UnitOfWork, llm: FakeLLMChat) -> RagService:
+def rag_service(uow: FakeUnitOfWork, llm: FakeLLMChat) -> RagService:
     return RagService(
         uow=uow,
-        embedder=FakeEmbedder(),
+        retriever=FakeRetriever(uow=uow),
         llm=llm,
         top_k=2,
         chat_prompt=LangchainPromptTemplate(get_settings().RAG_PROMPT_TEMPLATE),
@@ -36,6 +41,7 @@ def seed_workspace_with_chunks(uow: UnitOfWork, n_chunks: int = 2) -> int:
             [
                 Chunk(
                     document_id=document.document_id,  # type: ignore[attr-defined]
+                    workspace_id=workspace_id,
                     content=Content(f"chunk{i}"),
                 ).add_embedding(Embedding(vector=(0.1, 0.1), model_id="test"))
                 for i in range(n_chunks)

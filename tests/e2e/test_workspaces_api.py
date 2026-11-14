@@ -23,7 +23,6 @@ from app.services.factory import (
     create_rag_service,
 )
 from tests.conftest import (
-    FakeEmbedder,
     FakeLLMChat,
     FakeUnitOfWork,
 )
@@ -189,7 +188,7 @@ def test_unreachable_database_returns_503(client: TestClient) -> None:
     uow = FakeUnitOfWork()
     uow.workspaces = _UnreachableWorkspaceRepository()  # type: ignore[assignment]
     app.dependency_overrides[get_rag_service] = lambda: create_rag_service(
-        uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
+        uow=uow, llm=FakeLLMChat()
     )
     response = client.post("/v1/workspaces/2/ask", json={"question": "hi"})
 

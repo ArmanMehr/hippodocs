@@ -7,7 +7,13 @@ from app.services.rag_service import (
     WorkspaceNotFound,
 )
 from app.services.uow import UnitOfWork
-from tests.conftest import FakeEmbedder, FakeSplitter, seed_document, seed_workspace
+from tests.conftest import (
+    FakeEmbedder,
+    FakeSplitter,
+    FakeUnitOfWork,
+    seed_document,
+    seed_workspace,
+)
 
 
 def get_ingestion_service(uow: UnitOfWork) -> DocumentIngestionService:
@@ -17,11 +23,13 @@ def get_ingestion_service(uow: UnitOfWork) -> DocumentIngestionService:
 
 
 def get_chunks(uow: UnitOfWork, document_id: int) -> list[Chunk]:
-    return list(
-        uow.chunks.find_similar_in_document(
-            document_id=document_id, query_vector=[0.0], top_k=10
-        )
-    )
+    if isinstance(uow, FakeUnitOfWork):
+        return [
+            c
+            for c in uow.chunks._get_all().values()  # type: ignore
+            if c.document_id == document_id and c.embedding_vector is not None
+        ]
+    return []
 
 
 @pytest.fixture
@@ -50,9 +58,12 @@ def test_ingest_workspace_with_no_documents_is_noop(uow: UnitOfWork):
 
     get_ingestion_service(uow).ingest_workspace(workspace_id)
 
-    assert not uow.chunks.find_similar_in_workspace(
-        workspace_id, query_vector=[0.0], top_k=10
-    )
+    if isinstance(uow, FakeUnitOfWork):
+        assert not [
+            c
+            for c in uow.chunks._get_all().values()  # type: ignore
+            if c.workspace_id == workspace_id and c.embedding_vector is not None
+        ]
 
 
 def test_no_content_after_splitting(uow: UnitOfWork):

@@ -3,6 +3,7 @@ import structlog
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
+from app.adapters.retriever import BM25Retriever, HybridRetriever, PgVectorRetriever
 from app.adapters.security import (
     LocalPresidioPIIRedactor,
     LocalPresidioRegexOutputValidator,
@@ -22,6 +23,7 @@ from app.services.ports import (
     InputSanitizer,
     LLMChat,
     PIIRedactor,
+    Retriever,
     TextEmbedder,
     TextSplitter,
 )
@@ -201,16 +203,35 @@ def create_ingestion_service(uow: UnitOfWork | None = None) -> DocumentIngestion
     )
 
 
+def create_dense_retriever() -> PgVectorRetriever:
+    return PgVectorRetriever(uow=SQLAlchemyUnitOfWork())
+
+
+def create_sparse_retriever() -> BM25Retriever:
+    return BM25Retriever(SQLAlchemyUnitOfWork())
+
+
+def create_hybrid_retriever() -> HybridRetriever:
+    s = get_settings()
+    return HybridRetriever(
+        embedder=create_text_embedder(),
+        dense_retriever=create_dense_retriever(),
+        sparse_retriever=create_sparse_retriever(),
+        top_k_single=s.TOP_K,
+        smoothing_factor=s.SMOOTHING_FACTOR,
+    )
+
+
 def create_rag_service(
     uow: UnitOfWork | None = None,
-    embedder: TextEmbedder | None = None,
+    retriever: Retriever | None = None,
     llm: LLMChat | None = None,
 ) -> RagService:
     s = get_settings()
     return RagService(
         uow=uow or create_uow(),
-        embedder=embedder or create_text_embedder(),
+        retriever=retriever or create_hybrid_retriever(),
         llm=llm or create_llm_chat(),
-        top_k=s.TOP_K,
+        top_k=s.TOP_K_HYBRID,
         chat_prompt=LangchainPromptTemplate(s.RAG_PROMPT_TEMPLATE),
     )

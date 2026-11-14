@@ -73,7 +73,6 @@ class LocalPresidioPIIRedactor:
         "PHONE_NUMBER",
         "CREDIT_CARD",
         "IP_ADDRESS",
-        "LOCATION",
     ]
 
     def __init__(self) -> None:

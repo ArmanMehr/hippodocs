@@ -96,6 +96,13 @@ chunks_table = Table(
         nullable=False,
         index=True,
     ),
+    Column(
+        "workspace_id",
+        Integer,
+        ForeignKey("workspaces.workspace_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
     Column("content", ContentType, nullable=False),
     Column("embedding_vector", EmbeddingVector(), nullable=True),
     Column("embedding_model_id", String(255), nullable=True),

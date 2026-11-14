@@ -77,5 +77,4 @@ def downgrade() -> None:
     op.drop_index("ix_documents_workspace_preprocessed", table_name="documents")
     op.drop_table("documents")
     op.drop_table("workspaces")
-    op.execute("DROP EXTENSION IF EXISTS vector")
     # ### end Alembic commands ###

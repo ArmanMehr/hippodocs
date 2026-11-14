@@ -18,10 +18,13 @@ from app.adapters.repository import (
 from app.api.dependencies import (
     get_file_reader,
     get_ingestion_service,
+    get_input_validator,
+    get_output_validator,
     get_rag_service,
     get_workspace_service,
 )
 from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.domain.views import RetrievedChunkView
 from app.main import app
 from app.services.factory import (
     create_file_reader,
@@ -29,6 +32,7 @@ from app.services.factory import (
     create_rag_service,
     create_workspace_service,
 )
+from app.services.rag_service import InputValidatorService, OutputValidatorService
 from app.services.uow import UnitOfWork
 
 
@@ -70,8 +74,10 @@ def seed_workspace(uow: UnitOfWork) -> int:
 
 
 def seed_document(uow: UnitOfWork, text: str) -> int:
-    document = Document(content=Content(text), workspace=Workspace())
     with uow:
+        workspace = Workspace()
+        uow.workspaces.add(workspace)
+        document = Document(content=Content(text), workspace=workspace)
         uow.documents.add(document)
         uow.commit()
         return document.document_id  # type: ignore[attr-defined]
@@ -88,14 +94,20 @@ def client() -> TestClient:
     workspace_service = create_workspace_service(uow=uow)
     ingestion_service = create_ingestion_service(uow=uow)
     rag_service = create_rag_service(
-        uow=uow, embedder=FakeEmbedder(), llm=FakeLLMChat()
+        uow=uow,
+        retriever=FakeRetriever(uow=uow),
+        llm=FakeLLMChat(),
     )
     file_readers = create_file_reader()
+    input_validator = InputValidatorService(FakeInputSanitizer(), FakePIIRedactor())
+    output_validator = OutputValidatorService(FakeOutputValidator())
 
     app.dependency_overrides[get_workspace_service] = lambda: workspace_service
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
     app.dependency_overrides[get_rag_service] = lambda: rag_service
     app.dependency_overrides[get_file_reader] = lambda: file_readers
+    app.dependency_overrides[get_input_validator] = lambda: input_validator
+    app.dependency_overrides[get_output_validator] = lambda: output_validator
 
     return TestClient(app)
 
@@ -197,6 +209,39 @@ class FakeChunkRepository:
         return self._chunks
 
 
+class FakeRetriever:
+    def __init__(self, uow: "FakeUnitOfWork"):
+        self.uow = uow
+
+    def retrieve_in_document(
+        self, document_id: int, query_text: str, top_k: int
+    ) -> list[RetrievedChunkView]:
+        _ = query_text
+        chunks = [
+            RetrievedChunkView(
+                chunk_id=c.chunk_id,  # type: ignore[attr-defined]
+                content=c.content.value,
+            )
+            for c in self.uow.chunks._get_all().values()  # type: ignore
+            if c.document_id == document_id
+        ]
+        return chunks[:top_k]
+
+    def retrieve_in_workspace(
+        self, workspace_id: int, query_text: str, top_k: int
+    ) -> list[RetrievedChunkView]:
+        _ = query_text
+        chunks = [
+            RetrievedChunkView(
+                chunk_id=c.chunk_id,  # type: ignore[attr-defined]
+                content=c.content.value,
+            )
+            for c in self.uow.chunks._get_all().values()  # type: ignore
+            if c.workspace_id == workspace_id
+        ]
+        return chunks[:top_k]
+
+
 class FakeUnitOfWork:
     workspaces: WorkspaceRepository
     documents: DocumentRepository
@@ -239,6 +284,11 @@ class FakePIIRedactor:
 class FakeInputSanitizer:
     def sanitize(self, text: str) -> str:
         return text
+
+
+class FakeOutputValidator:
+    def validate(self, answer: str) -> str:
+        return answer
 
 
 class FakeEmbedder:

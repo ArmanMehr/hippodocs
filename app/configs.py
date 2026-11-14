@@ -77,9 +77,11 @@ class Configs(BaseSettings):
     LANGFUSE_HOST: str = ""
 
     # RAG Settings
-    CHUNK_SIZE: int = 512
-    CHUNK_OVERLAP: int = 50
-    TOP_K: int = 25
+    CHUNK_SIZE: int = 1500
+    CHUNK_OVERLAP: int = 200
+    TOP_K: int = 30
+    TOP_K_HYBRID: int = 10
+    SMOOTHING_FACTOR: int = 60
     RAG_PROMPT_TEMPLATE: str = _DEFAULT_RAG_PROMPT
 
     # API

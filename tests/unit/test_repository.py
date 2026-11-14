@@ -212,7 +212,11 @@ def test_delete_workspace_cascades_documents(
 
 
 def make_chunk(document: Document, content: str) -> Chunk:
-    return Chunk(document_id=document.document_id, content=Content(content))  # type: ignore
+    return Chunk(
+        document_id=document.document_id,  # type: ignore
+        workspace_id=document.workspace.workspace_id,  # type: ignore
+        content=Content(content),
+    )
 
 
 def test_chunk_save_all_assigns_ids(

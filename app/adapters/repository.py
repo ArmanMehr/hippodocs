@@ -41,14 +41,6 @@ class ChunkRepository(Protocol):
 
     def get(self, chunk_id: int) -> Chunk | None: ...
 
-    def find_similar_in_workspace(
-        self, workspace_id: int, query_vector: Sequence[float], top_k: int
-    ) -> Sequence[Chunk]: ...
-
-    def find_similar_in_document(
-        self, document_id: int, query_vector: Sequence[float], top_k: int
-    ) -> Sequence[Chunk]: ...
-
 
 class SQLAlchemyWorkspaceRepository:
     def __init__(self, session: Session) -> None:
@@ -149,39 +141,3 @@ class SQLAlchemyChunkRepository:
     def get(self, chunk_id: int) -> Chunk | None:
         stmt = select(Chunk).where(chunks_table.c.chunk_id == chunk_id)
         return self._session.scalar(stmt)
-
-    def find_similar_in_document(
-        self, document_id: int, query_vector: Sequence[float], top_k: int
-    ) -> Sequence[Chunk]:
-        stmt = (
-            select(Chunk)
-            .where(
-                and_(
-                    chunks_table.c.document_id == document_id,
-                    chunks_table.c.embedding_vector.is_not(None),
-                )
-            )
-            .order_by(chunks_table.c.embedding_vector.cosine_distance(query_vector))
-            .limit(top_k)
-        )
-        return list(self._session.scalars(stmt))
-
-    def find_similar_in_workspace(
-        self, workspace_id: int, query_vector: Sequence[float], top_k: int
-    ) -> Sequence[Chunk]:
-        stmt = (
-            select(Chunk)
-            .join(
-                documents_table,
-                chunks_table.c.document_id == documents_table.c.document_id,
-            )
-            .where(
-                and_(
-                    documents_table.c.workspace_id == workspace_id,
-                    chunks_table.c.embedding_vector.is_not(None),
-                )
-            )
-            .order_by(chunks_table.c.embedding_vector.cosine_distance(query_vector))
-            .limit(top_k)
-        )
-        return list(self._session.scalars(stmt))

@@ -63,6 +63,7 @@ class Embedding:
 @dataclass
 class Chunk:
     document_id: int
+    workspace_id: int
     content: Content
     embedding_vector: list[float] | None = None
     embedding_model_id: str | None = None

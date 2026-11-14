@@ -12,7 +12,7 @@ from app.domain.models import (
 
 
 def make_chunk() -> Chunk:
-    return Chunk(document_id=1, content=Content("text"))
+    return Chunk(document_id=1, workspace_id=1, content=Content("text"))
 
 
 def make_document() -> Document:
