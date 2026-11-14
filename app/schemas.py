@@ -47,3 +47,9 @@ class AskChatSchema(BaseModel):
 
 class ChatResponseSchema(BaseModel):
     content: str
+
+
+class ReadinessResponse(BaseModel):
+    status: str
+    database: bool
+    providers: dict[str, bool]

@@ -127,7 +127,7 @@ class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
         super().__init__(langfuse_client=langfuse_client)
         self._embedder = OllamaEmbeddings(
             model=model_id,
-            base_url=base_url,
+            base_url=base_url or "http://localhost:11437",
             dimensions=dimensions,
         )
         self.model_id = model_id

@@ -1,4 +1,3 @@
-import httpx
 import structlog
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
@@ -17,7 +16,7 @@ from app.adapters.text_embedder import (
 )
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
 from app.configs import get_settings
-from app.exceptions import ProviderConnectionError, ValidationError
+from app.exceptions import UnsupportedProvider
 from app.observability import create_langchain_callback_handler, get_langfuse_client
 from app.services.ports import (
     InputSanitizer,
@@ -44,23 +43,24 @@ def _create_langchain_embedder(
     provider: str, model_id: str, base_url: str, dimensions: int
 ) -> LangchainEmbedder:
     langfuse_client = get_langfuse_client()
-    if provider == "ollama":
-        embedder: LangchainEmbedder = LangChainOllamaTextEmbedder(
-            model_id=model_id,
-            base_url=base_url,
-            dimensions=dimensions,
-            langfuse_client=langfuse_client,
-        )
-    elif provider == "openai":
-        embedder: LangchainEmbedder = LangChainOpenAITextEmbedder(
-            model_id=model_id,
-            base_url=base_url,
-            api_key=get_settings().OPENAI_API_KEY,
-            dimensions=dimensions,
-            langfuse_client=langfuse_client,
-        )
-    else:
-        raise ValidationError(f"Unknown embedding provider: {provider}")
+    match provider:
+        case "ollama":
+            embedder: LangchainEmbedder = LangChainOllamaTextEmbedder(
+                model_id=model_id,
+                base_url=base_url,
+                dimensions=dimensions,
+                langfuse_client=langfuse_client,
+            )
+        case "openai":
+            embedder: LangchainEmbedder = LangChainOpenAITextEmbedder(
+                model_id=model_id,
+                base_url=base_url,
+                api_key=get_settings().OPENAI_API_KEY,
+                dimensions=dimensions,
+                langfuse_client=langfuse_client,
+            )
+        case _:
+            raise UnsupportedProvider()
 
     return LangChainInMemoryCacheBackedEmbedder(
         embedder, langfuse_client=langfuse_client
@@ -70,82 +70,40 @@ def _create_langchain_embedder(
 def _create_llm(
     provider: str, model_id: str, base_url: str, system_prompt: str
 ) -> LLMChat:
-    if provider == "openai":
-        callback_handler = create_langchain_callback_handler()
-        callbacks = [callback_handler] if callback_handler else None
-        return LangChainOpenAILLMChat(
-            model_id=model_id,
-            base_url=base_url,
-            api_key=get_settings().OPENAI_API_KEY,
-            max_retries=10,
-            system_prompt=system_prompt,
-            callbacks=callbacks,
-        )
-    raise ValidationError(f"Unknown LLM provider: {provider}")
-
-
-def _ping(url: str) -> bool:
-    try:
-        httpx.get(url, timeout=5)
-        return True
-    except Exception:  # noqa
-        logger.warning("url_ping_failed", url=url)
-        return False
+    match provider:
+        case "openai":
+            callback_handler = create_langchain_callback_handler()
+            callbacks = [callback_handler] if callback_handler else None
+            return LangChainOpenAILLMChat(
+                model_id=model_id,
+                base_url=base_url,
+                api_key=get_settings().OPENAI_API_KEY,
+                max_retries=10,
+                system_prompt=system_prompt,
+                callbacks=callbacks,
+            )
+        case _:
+            raise UnsupportedProvider()
 
 
 def create_text_embedder() -> TextEmbedder:
     s = get_settings()
-
-    primary = _create_langchain_embedder(
-        s.EMBEDDING_PROVIDER, s.EMBEDDING_MODEL, s.EMBEDDING_BASE_URL, s.DIMENSIONS
-    )
-    if _ping(s.EMBEDDING_BASE_URL):
-        return primary
-
-    logger.warning("Primary embedding provider unhealthy, trying fallback")
-
-    fb_provider = s.EMBEDDING_FALLBACK_PROVIDER or s.EMBEDDING_PROVIDER
-    fb_model = s.EMBEDDING_FALLBACK_MODEL or s.EMBEDDING_MODEL
-    fb_url = s.EMBEDDING_FALLBACK_BASE_URL or s.EMBEDDING_BASE_URL
-
-    if (fb_provider, fb_model, fb_url) != (
+    return _create_langchain_embedder(
         s.EMBEDDING_PROVIDER,
         s.EMBEDDING_MODEL,
         s.EMBEDDING_BASE_URL,
-    ):
-        fb = _create_langchain_embedder(fb_provider, fb_model, fb_url, s.DIMENSIONS)
-        if _ping(fb_url):
-            return fb
-
-    raise ProviderConnectionError("Could not connect to any provider.")
+        s.DIMENSIONS,
+    )
 
 
 def create_llm_chat() -> LLMChat:
     s = get_settings()
-
-    primary = _create_llm(
-        s.LLM_PROVIDER, s.LLM_MODEL, s.LLM_BASE_URL, s.LLM_SYSTEM_PROMPT
-    )
-    if _ping(s.LLM_BASE_URL):
-        return primary
-
-    logger.warning("Primary LLM provider unhealthy, trying fallback")
-
-    fb_provider = s.LLM_FALLBACK_PROVIDER or s.LLM_PROVIDER
-    fb_model = s.LLM_FALLBACK_MODEL or s.LLM_MODEL
-    fb_url = s.LLM_FALLBACK_BASE_URL or s.LLM_BASE_URL
-
-    if (fb_provider, fb_model, fb_url) != (
+    return _create_llm(
         s.LLM_PROVIDER,
         s.LLM_MODEL,
         s.LLM_BASE_URL,
-    ):
-        fb = _create_llm(fb_provider, fb_model, fb_url, s.LLM_SYSTEM_PROMPT)
-        if _ping(fb_url):
-            return fb
-
-    logger.warning("All LLM providers unhealthy, returning primary anyway")
-    return primary
+        s.LLM_SYSTEM_PROMPT,
+    )
 
 
 def create_text_splitter() -> TextSplitter:

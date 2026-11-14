@@ -25,6 +25,7 @@ from app.exceptions import (
     error_payload,
     get_fastapi_exception_payload,
 )
+from app.health import check_providers_health
 from app.limiter import limiter
 from app.observability import flush_langfuse, initialize_langfuse
 
@@ -39,6 +40,8 @@ async def lifespan(_: FastAPI):
     logger.info("api_starting")
     start_mappers()
     initialize_langfuse()
+    await check_providers_health()
+
     try:
         yield
     finally:

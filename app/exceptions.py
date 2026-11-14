@@ -89,6 +89,11 @@ class ProviderConnectionError(ServerError):
     error_code = "provider_unavailable"
 
 
+class UnsupportedProvider(ServerError):
+    status_code = 400
+    error_code = "unsupported_provider"
+
+
 class RateLimitError(ClientError):
     status_code = 429
     error_code = "rate_limit_exceeded"

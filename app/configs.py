@@ -23,6 +23,9 @@ Security rules:
 - Do not claim to have performed actions you did not perform.
 """
 
+SUPPORTED_LLM_PROVIDERS = Literal["ollama", "openai"]
+SUPPORTED_EMBEDDING_PROVIDERS = Literal["openai"]
+
 
 class Configs(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow", frozen=True)
@@ -45,25 +48,19 @@ class Configs(BaseSettings):
     LOG_BACKUP_COUNT: int = 5
 
     # PostgreSQL Database
-    DATABASE_URL: str = ""
+    DATABASE_URL: str = "sqlite:///:memory:"
 
     # Embedding
-    EMBEDDING_PROVIDER: str = "ollama"
-    EMBEDDING_BASE_URL: str = "http://localhost:11434"
+    EMBEDDING_PROVIDER: SUPPORTED_EMBEDDING_PROVIDERS = "openai"
+    EMBEDDING_BASE_URL: str = "https://api.openai.com/v1"
     EMBEDDING_MODEL: str = ""
-    EMBEDDING_FALLBACK_PROVIDER: str = ""
-    EMBEDDING_FALLBACK_BASE_URL: str = ""
-    EMBEDDING_FALLBACK_MODEL: str = ""
     DIMENSIONS: int = 384
 
     # LLM
-    LLM_PROVIDER: str = "openai"
-    LLM_BASE_URL: str = "http://localhost:3001/v1"
+    LLM_PROVIDER: SUPPORTED_LLM_PROVIDERS = "openai"
+    LLM_BASE_URL: str = "https://api.openai.com/v1"
     LLM_MODEL: str = ""
 
-    LLM_FALLBACK_PROVIDER: str = ""
-    LLM_FALLBACK_BASE_URL: str = ""
-    LLM_FALLBACK_MODEL: str = ""
     LLM_MAX_RETRIES: int = 3
     LLM_SYSTEM_PROMPT: str = _DEFAULT_SYSTEM_PROMPT
 
