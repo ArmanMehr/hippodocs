@@ -1,8 +1,7 @@
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
-from pytest_mock import MockerFixture
+from pytest_mock import MockerFixture, MockType
 
 from app.adapters.security import (
     LocalPresidioPIIRedactor,
@@ -11,8 +10,8 @@ from app.adapters.security import (
 )
 from app.exceptions import SuspiciousInputError
 
-RedactorFixture = tuple[LocalPresidioPIIRedactor, MagicMock, MagicMock]
-ValidatorFixture = tuple[LocalPresidioRegexOutputValidator, MagicMock]
+RedactorFixture = tuple[LocalPresidioPIIRedactor, MockType, MockType]
+ValidatorFixture = tuple[LocalPresidioRegexOutputValidator, MockType]
 
 
 def test_regex_input_sanitizer_detects_common_injection_variants() -> None:

@@ -40,7 +40,13 @@ async def lifespan(_: FastAPI):
     logger.info("api_starting")
     start_mappers()
     initialize_langfuse()
-    await check_providers_health()
+
+    providers_health = await check_providers_health()
+    health_details = providers_health.get_dict()
+    if not providers_health.is_healthy():
+        logger.warning("provider_health_check_failed", details=health_details)
+    else:
+        logger.info("provider_health_check_passed", details=health_details)
 
     try:
         yield
@@ -126,11 +132,6 @@ async def server_error_handler(_: Request, exc: ServerError) -> JSONResponse:
 async def client_error_handler(_: Request, exc: ClientError) -> JSONResponse:
     structlog.contextvars.bind_contextvars(error_code=exc.error_code)
     return JSONResponse(status_code=exc.status_code, content=error_payload(exc))
-
-
-@app.get("/health", tags=["health"])
-async def health_check():
-    return {"status": "ok"}
 
 
 if __name__ == "__main__":

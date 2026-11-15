@@ -1,33 +1,27 @@
-import structlog
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
-from app.health import CheckProvidersHealth, check_db_health
+from app.health import check_db_health, check_providers_health
 from app.schemas import ReadinessResponse
 
-logger = structlog.get_logger()
-
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("/healthz", status_code=status.HTTP_200_OK)
-def liveness() -> JSONResponse:
+@router.get("/live", status_code=status.HTTP_200_OK)
+async def liveness():
     return JSONResponse(content={"status": "ok"})
 
 
-@router.get("/readyz", response_model=ReadinessResponse)
+@router.get("/ready", response_model=ReadinessResponse)
 async def readiness() -> JSONResponse:
-    provider_health = CheckProvidersHealth()
-    provider_details = await provider_health.check()
+    providers_health = (await check_providers_health()).get_dict()
     db_ok = check_db_health()
 
-    all_providers_ok = all(provider_details.values())
-    is_ready = db_ok and all_providers_ok
-
+    is_ready = all(providers_health.values()) and db_ok
     payload = ReadinessResponse(
         status="ready" if is_ready else "unhealthy",
         database=db_ok,
-        providers=provider_details,
+        providers=providers_health,
     ).model_dump()
 
     status_code = (

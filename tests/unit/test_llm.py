@@ -1,5 +1,4 @@
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from openai import APITimeoutError
@@ -11,14 +10,14 @@ from app.exceptions import LLMError, LLMTimeoutError, RateLimitError
 
 
 def _make_llm_chat(mocker: MockerFixture) -> LangChainOpenAILLMChat:
-    with patch("app.adapters.llm.ChatOpenAI"):
-        obj = LangChainOpenAILLMChat(
-            model_id="test-model",
-            base_url="http://localhost",
-            api_key="key",
-            max_retries=0,
-            system_prompt="You are a test assistant.",
-        )
+    mocker.patch("app.adapters.llm.ChatOpenAI")
+    obj = LangChainOpenAILLMChat(
+        model_id="test-model",
+        base_url="http://localhost",
+        api_key="key",
+        max_retries=0,
+        system_prompt="You are a test assistant.",
+    )
     obj._chain = mocker.MagicMock()
     return obj
 

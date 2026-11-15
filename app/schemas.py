@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -50,6 +52,6 @@ class ChatResponseSchema(BaseModel):
 
 
 class ReadinessResponse(BaseModel):
-    status: str
+    status: Literal["ready", "unhealthy"]
     database: bool
     providers: dict[str, bool]

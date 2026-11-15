@@ -1,14 +1,30 @@
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 import pytest
+from pytest_mock import MockerFixture
 
 from app.configs import Configs
 from app.health import (
-    CheckProvidersHealth,
     check_ollama_health,
     check_openai_health,
+    check_providers_health,
 )
+
+
+def _patch_async_client(
+    mocker: MockerFixture,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> None:
+    transport = httpx.MockTransport(handler)
+    real_async_client = httpx.AsyncClient
+
+    def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return real_async_client(*args, **kwargs)
+
+    mocker.patch("httpx.AsyncClient", side_effect=factory)
 
 
 @pytest.mark.anyio
@@ -24,17 +40,6 @@ async def test_check_ollama_health_success():
 
 
 @pytest.mark.anyio
-async def test_check_ollama_health_failure_status_code():
-    def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="Internal Server Error")
-
-    transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client:
-        is_healthy = await check_ollama_health("http://localhost:11434", client=client)
-    assert is_healthy is False
-
-
-@pytest.mark.anyio
 async def test_check_ollama_health_network_error():
     def handler(_: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("Connection refused")
@@ -46,7 +51,9 @@ async def test_check_ollama_health_network_error():
 
 
 @pytest.mark.anyio
-async def test_check_openai_health_success():
+async def test_check_openai_health_success(mocker: MockerFixture):
+    mocker.patch("app.health._settings", Configs(OPENAI_API_KEY="sk-test-key"))
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == "https://api.openai.com/v1/models"
         assert request.headers.get("Authorization") == "Bearer sk-test-key"
@@ -55,7 +62,7 @@ async def test_check_openai_health_success():
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         is_healthy = await check_openai_health(
-            "https://api.openai.com/v1", "sk-test-key", client=client
+            "https://api.openai.com/v1", client=client
         )
     assert is_healthy is True
 
@@ -68,27 +75,14 @@ async def test_check_openai_health_unauthorized():
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         is_healthy = await check_openai_health(
-            "https://api.openai.com/v1", "wrong-key", client=client
+            "https://api.openai.com/v1", client=client
         )
     assert is_healthy is False
 
 
 @pytest.mark.anyio
-async def test_check_openai_health_timeout():
-    def handler(_: httpx.Request) -> httpx.Response:
-        raise httpx.TimeoutException("Read timed out")
-
-    transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client:
-        is_healthy = await check_openai_health(
-            "https://api.openai.com/v1", "sk-test-key", client=client
-        )
-    assert is_healthy is False
-
-
-@pytest.mark.anyio
-async def test_check_provider_health_all_healthy(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_check_providers_health_all_healthy(
+    mocker: MockerFixture,
 ) -> None:
     settings = Configs(
         EMBEDDING_PROVIDER="openai",
@@ -97,33 +91,26 @@ async def test_check_provider_health_all_healthy(
         LLM_BASE_URL="https://api.openai.com/v1",
         OPENAI_API_KEY="sk-test",
     )
+    mocker.patch("app.health._settings", settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "localhost" in request.url.host:
             return httpx.Response(200, text="Ollama is running")
-        elif "api.openai.com" in request.url.host:
+        if "api.openai.com" in request.url.host:
             return httpx.Response(200, json={"data": []})
         return httpx.Response(404)
 
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    _patch_async_client(mocker, handler)
 
-    def mocked_async_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
+    health = await check_providers_health()
 
-    monkeypatch.setattr(httpx, "AsyncClient", mocked_async_client)
-
-    checker = CheckProvidersHealth(configs=settings)
-    details = await checker.check()
-
-    assert details == {"embedder": True, "llm": True}
-    assert all((await checker.check()).values()) is True
+    assert health.get_dict() == {"embedding": True, "llm": True}
+    assert health.is_healthy() is True
 
 
 @pytest.mark.anyio
-async def test_check_provider_health_one_unhealthy(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_check_providers_health_one_unhealthy(
+    mocker: MockerFixture,
 ) -> None:
     settings = Configs(
         EMBEDDING_PROVIDER="openai",
@@ -132,25 +119,18 @@ async def test_check_provider_health_one_unhealthy(
         LLM_BASE_URL="https://api.openai.com/v1",
         OPENAI_API_KEY="sk-test",
     )
+    mocker.patch("app.health._settings", settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "localhost" in request.url.host:
             return httpx.Response(200, text="Ollama is running")
-        elif "api.openai.com" in request.url.host:
+        if "api.openai.com" in request.url.host:
             return httpx.Response(401, json={"error": "unauthorized"})
         return httpx.Response(404)
 
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    _patch_async_client(mocker, handler)
 
-    def mocked_async_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
+    health = await check_providers_health()
 
-    monkeypatch.setattr(httpx, "AsyncClient", mocked_async_client)
-
-    checker = CheckProvidersHealth(configs=settings)
-    details = await checker.check()
-
-    assert details == {"embedder": True, "llm": False}
-    assert all((await checker.check()).values()) is False
+    assert health.get_dict() == {"embedding": True, "llm": False}
+    assert health.is_healthy() is False

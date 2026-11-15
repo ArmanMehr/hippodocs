@@ -34,36 +34,36 @@ The API listens at `http://localhost:8000`. Interactive API documentation is ava
 
 All application routes use the `/v1` prefix.
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/workspaces/` | Create a workspace |
-| `GET` | `/v1/workspaces/` | List workspaces |
-| `GET` | `/v1/workspaces/{workspace_id}` | Get a workspace |
-| `DELETE` | `/v1/workspaces/{workspace_id}` | Delete a workspace |
-| `POST` | `/v1/workspaces/{workspace_id}/documents` | Upload a PDF or Markdown document |
-| `GET` | `/v1/workspaces/{workspace_id}/documents` | List workspace documents |
-| `DELETE` | `/v1/workspaces/{workspace_id}/documents/{document_id}` | Delete a document |
-| `POST` | `/v1/workspaces/{workspace_id}/ask/` | Ask a question about workspace documents |
-| `GET` | `/health` | Check API health |
+| Method   | Path                                                    | Description                              |
+| -------- | ------------------------------------------------------- | ---------------------------------------- |
+| `POST`   | `/v1/workspaces/`                                       | Create a workspace                       |
+| `GET`    | `/v1/workspaces/`                                       | List workspaces                          |
+| `GET`    | `/v1/workspaces/{workspace_id}`                         | Get a workspace                          |
+| `DELETE` | `/v1/workspaces/{workspace_id}`                         | Delete a workspace                       |
+| `POST`   | `/v1/workspaces/{workspace_id}/documents`               | Upload a PDF or Markdown document        |
+| `GET`    | `/v1/workspaces/{workspace_id}/documents`               | List workspace documents                 |
+| `DELETE` | `/v1/workspaces/{workspace_id}/documents/{document_id}` | Delete a document                        |
+| `POST`   | `/v1/workspaces/{workspace_id}/ask/`                    | Ask a question about workspace documents |
+| `GET`    | `/health`                                               | Check API health                         |
 
 ## Configuration
 
 The application reads settings from environment variables or `.env`. The example file lists provider and Langfuse settings. Core settings include:
 
-| Variable | Default | Description |
-|---|---|---|
-| `DATABASE_URL` | empty | PostgreSQL connection URL |
-| `EMBEDDING_PROVIDER` | `ollama` | Embedding provider, `ollama` or `openai` |
-| `EMBEDDING_BASE_URL` | `http://localhost:11434` | Embedding service URL |
-| `EMBEDDING_MODEL` | empty | Embedding model name |
-| `LLM_PROVIDER` | `openai` | Chat provider, `ollama` or `openai` |
-| `LLM_BASE_URL` | `http://localhost:3001/v1` | Chat service URL |
-| `LLM_MODEL` | empty | Chat model name |
-| `OPENAI_API_KEY` | `no-key` | API key for OpenAI-compatible services |
-| `MAX_FILESIZE` | `10485760` | Maximum upload size in bytes |
-| `CHUNK_SIZE` | `512` | Document chunk size |
-| `CHUNK_OVERLAP` | `50` | Overlap between document chunks |
-| `TOP_K` | `25` | Number of chunks retrieved per question |
+| Variable             | Default                    | Description                              |
+| -------------------- | -------------------------- | ---------------------------------------- |
+| `DATABASE_URL`       | empty                      | PostgreSQL connection URL                |
+| `EMBEDDING_PROVIDER` | `ollama`                   | Embedding provider, `ollama` or `openai` |
+| `EMBEDDING_BASE_URL` | `http://localhost:11434`   | Embedding service URL                    |
+| `EMBEDDING_MODEL`    | empty                      | Embedding model name                     |
+| `LLM_PROVIDER`       | `openai`                   | Chat provider, `ollama` or `openai`      |
+| `LLM_BASE_URL`       | `http://localhost:3001/v1` | Chat service URL                         |
+| `LLM_MODEL`          | empty                      | Chat model name                          |
+| `OPENAI_API_KEY`     | `no-key`                   | API key for OpenAI-compatible services   |
+| `MAX_FILESIZE`       | `10485760`                 | Maximum upload size in bytes             |
+| `CHUNK_SIZE`         | `512`                      | Document chunk size                      |
+| `CHUNK_OVERLAP`      | `50`                       | Overlap between document chunks          |
+| `TOP_K`              | `25`                       | Number of chunks retrieved per question  |
 
 Langfuse tracing starts when its public key, secret key, and base URL are configured.
 
