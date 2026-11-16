@@ -23,7 +23,7 @@ Security rules:
 """
 
 SUPPORTED_LLM_PROVIDERS = Literal["ollama", "openai"]
-SUPPORTED_EMBEDDING_PROVIDERS = Literal["openai"]
+SUPPORTED_EMBEDDING_PROVIDERS = Literal["ollama", "openai"]
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 OPENAI_BASE_URL = "https://api.openai.com/v1"
