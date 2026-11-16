@@ -29,13 +29,15 @@ def _patch_async_client(
 
 @pytest.mark.anyio
 async def test_check_ollama_health_success():
+    url = "http://localhost:11434/"
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert str(request.url) == "http://localhost:11434/"
+        assert str(request.url) == url
         return httpx.Response(200, text="Ollama is running")
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
-        is_healthy = await check_ollama_health("http://localhost:11434", client=client)
+        is_healthy = await check_ollama_health(url, client=client)
     assert is_healthy is True
 
 
