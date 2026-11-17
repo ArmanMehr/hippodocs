@@ -44,7 +44,8 @@ All application routes use the `/v1` prefix.
 | `GET`    | `/v1/workspaces/{workspace_id}/documents`               | List workspace documents                 |
 | `DELETE` | `/v1/workspaces/{workspace_id}/documents/{document_id}` | Delete a document                        |
 | `POST`   | `/v1/workspaces/{workspace_id}/ask/`                    | Ask a question about workspace documents |
-| `GET`    | `/health`                                               | Check API health                         |
+| `GET`    | `/health/live`                                          | Liveness probe                           |
+| `GET`    | `/health/ready`                                         | Readiness probe (database + providers)  |
 
 ## Configuration
 
@@ -53,17 +54,18 @@ The application reads settings from environment variables or `.env`. The example
 | Variable             | Default                    | Description                              |
 | -------------------- | -------------------------- | ---------------------------------------- |
 | `DATABASE_URL`       | empty                      | PostgreSQL connection URL                |
-| `EMBEDDING_PROVIDER` | `ollama`                   | Embedding provider, `ollama` or `openai` |
-| `EMBEDDING_BASE_URL` | `http://localhost:11434`   | Embedding service URL                    |
+| `EMBEDDING_PROVIDER` | `openai`                   | Embedding provider, `ollama` or `openai` |
+| `EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | Embedding service URL                   |
 | `EMBEDDING_MODEL`    | empty                      | Embedding model name                     |
 | `LLM_PROVIDER`       | `openai`                   | Chat provider, `ollama` or `openai`      |
-| `LLM_BASE_URL`       | `http://localhost:3001/v1` | Chat service URL                         |
+| `LLM_BASE_URL`       | `https://api.openai.com/v1` | Chat service URL                        |
 | `LLM_MODEL`          | empty                      | Chat model name                          |
 | `OPENAI_API_KEY`     | `no-key`                   | API key for OpenAI-compatible services   |
 | `MAX_FILESIZE`       | `10485760`                 | Maximum upload size in bytes             |
-| `CHUNK_SIZE`         | `512`                      | Document chunk size                      |
-| `CHUNK_OVERLAP`      | `50`                       | Overlap between document chunks          |
-| `TOP_K`              | `25`                       | Number of chunks retrieved per question  |
+| `CHUNK_SIZE`         | `1500`                     | Document chunk size                      |
+| `CHUNK_OVERLAP`      | `200`                      | Overlap between document chunks          |
+| `TOP_K`              | `30`                       | Number of chunks retrieved per question  |
+| `TOP_K_HYBRID`       | `10`                       | Hybrid (BM25 + vector) retrieval top-k   |
 
 Langfuse tracing starts when its public key, secret key, and base URL are configured.
 
