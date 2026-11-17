@@ -163,7 +163,7 @@ class DocumentIngestionService:
             _ = document.workspace.workspace_id  # type: ignore[attr-defined]
 
         self._ingest_document(document)
-        return document_id, title, content.value
+        return document_id, title, content_valid.value
 
     def retry_ingestion_in_workspace(self, workspace_id: int) -> None:
         with self.uow:
