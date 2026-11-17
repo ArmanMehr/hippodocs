@@ -18,12 +18,17 @@ from app.adapters.repository import (
 from app.api.dependencies import (
     get_file_reader,
     get_ingestion_service,
-    get_input_validator,
-    get_output_validator,
     get_rag_service,
     get_workspace_service,
 )
-from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.domain.models import (
+    Chunk,
+    Content,
+    Document,
+    DocumentStatus,
+    Embedding,
+    Workspace,
+)
 from app.domain.views import RetrievedChunkView
 from app.main import app
 from app.services.factory import (
@@ -32,7 +37,6 @@ from app.services.factory import (
     create_rag_service,
     create_workspace_service,
 )
-from app.services.rag_service import InputValidatorService, OutputValidatorService
 from app.services.uow import UnitOfWork
 
 
@@ -99,15 +103,11 @@ def client() -> TestClient:
         llm=FakeLLMChat(),
     )
     file_readers = create_file_reader()
-    input_validator = InputValidatorService(FakeInputSanitizer(), FakePIIRedactor())
-    output_validator = OutputValidatorService(FakeOutputValidator())
 
     app.dependency_overrides[get_workspace_service] = lambda: workspace_service
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
     app.dependency_overrides[get_rag_service] = lambda: rag_service
     app.dependency_overrides[get_file_reader] = lambda: file_readers
-    app.dependency_overrides[get_input_validator] = lambda: input_validator
-    app.dependency_overrides[get_output_validator] = lambda: output_validator
 
     return TestClient(app)
 
@@ -141,6 +141,7 @@ class FakeWorkspaceRepository:
 class FakeDocumentRepository:
     def __init__(self):
         self._documents: dict[int, Document] = {}
+        self._content_hashes: dict[tuple[int, int], str] = {}
         self._counter = 1
 
     def add(self, document: Document) -> None:
@@ -150,6 +151,11 @@ class FakeDocumentRepository:
 
     def get(self, document_id: int) -> Document | None:
         return self._documents.get(document_id)
+
+    def add_content_hash(
+        self, workspace_id: int, document_id: int, content_hash: str
+    ) -> None:
+        self._content_hashes[(workspace_id, document_id)] = content_hash
 
     def list_by_workspace(
         self, workspace_id: int, skip: int = 0, limit: int = 100
@@ -163,11 +169,27 @@ class FakeDocumentRepository:
         print(docs)
         return docs[skip : skip + limit], total
 
-    def list_unpreprocessed_by_workspace(
-        self, workspace_id: int
-    ) -> tuple[list[Document], int]:
-        docs, total = self.list_by_workspace(workspace_id)
-        return [doc for doc in docs if not doc.is_preprocessed], total
+    def list_undone_by_workspace(self, workspace_id: int) -> list[Document]:
+        return [
+            doc
+            for doc in self._documents.values()
+            if doc.workspace
+            and doc.workspace.workspace_id == workspace_id  # type: ignore
+            and doc.status != DocumentStatus.DONE
+        ]
+
+    def get_identical_document_in_workspace(
+        self, workspace_id: int, content_hash: str
+    ) -> Document | None:
+        for (doc_workspace_id, document_id), saved_hash in self._content_hashes.items():
+            if doc_workspace_id == workspace_id and saved_hash == content_hash:
+                return self._documents.get(document_id)
+        return None
+
+    def update_status(self, document_id: int, new_status: DocumentStatus) -> None:
+        document = self.get(document_id)
+        if document is not None:
+            document.status = new_status
 
     def delete(self, document_id: int) -> None:
         self._documents.pop(document_id, None)
@@ -186,6 +208,17 @@ class FakeChunkRepository:
 
     def get(self, chunk_id: int) -> Chunk | None:
         return self._chunks.get(chunk_id)
+
+    def get_by_document(self, document_id: int) -> list[Chunk]:
+        return [
+            chunk for chunk in self._chunks.values() if chunk.document_id == document_id
+        ]
+
+    def update_embeddings(self, chunks: Sequence[Chunk]) -> None:
+        for chunk in chunks:
+            stored_chunk = self.get(chunk.chunk_id)  # type: ignore[attr-defined]
+            if stored_chunk is not None:
+                stored_chunk.embedding = chunk.embedding
 
     def find_similar_in_document(
         self, document_id: int, query_vector: Sequence[float], top_k: int
@@ -214,13 +247,13 @@ class FakeRetriever:
         self.uow = uow
 
     def retrieve_in_document(
-        self, document_id: int, query_text: str, top_k: int
+        self, document_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
-        _ = query_text
+        _ = query
         chunks = [
             RetrievedChunkView(
                 chunk_id=c.chunk_id,  # type: ignore[attr-defined]
-                content=c.content.value,
+                text=c.content.value,
             )
             for c in self.uow.chunks._get_all().values()  # type: ignore
             if c.document_id == document_id
@@ -228,13 +261,13 @@ class FakeRetriever:
         return chunks[:top_k]
 
     def retrieve_in_workspace(
-        self, workspace_id: int, query_text: str, top_k: int
+        self, workspace_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
-        _ = query_text
+        _ = query
         chunks = [
             RetrievedChunkView(
                 chunk_id=c.chunk_id,  # type: ignore[attr-defined]
-                content=c.content.value,
+                text=c.content.value,
             )
             for c in self.uow.chunks._get_all().values()  # type: ignore
             if c.workspace_id == workspace_id
@@ -270,25 +303,26 @@ class FakeUnitOfWork:
 
 
 class FakeSplitter:
-    def split_text(self, text: str) -> list[Content]:
+    def split_text(self, text: str, document_id: int, workspace_id: int) -> list[Chunk]:
         return [
-            Content(value=chunk.strip()) for chunk in text.split(".") if chunk.strip()
+            Chunk(
+                content=Content(value=chunk.strip()),
+                document_id=document_id,
+                workspace_id=workspace_id,
+            )
+            for chunk in text.split(".")
+            if chunk.strip()
         ]
 
 
-class FakePIIRedactor:
-    def redact(self, text: str) -> str:
-        return text
-
-
-class FakeInputSanitizer:
-    def sanitize(self, text: str) -> str:
-        return text
-
-
 class FakeOutputValidator:
-    def validate(self, answer: str) -> str:
-        return answer
+    def validate(self, content: Content) -> Content:
+        return content
+
+
+class FakeInputValidator:
+    def validate(self, content: Content) -> Content:
+        return content
 
 
 class FakeEmbedder:
@@ -310,16 +344,8 @@ class FakeLLMChat:
     def __init__(self, model_id: str = "", system_prompt: str = ""):
         self.model_id = model_id
         self.system_prompt = system_prompt
-        self.prompts: list[str] = []
+        self.prompts: list[Content] = []
 
-    def invoke(self, query: str) -> str:
+    def invoke(self, query: Content) -> Content:
         self.prompts.append(query)
-        return "Answer"
-
-
-class FakePromptTemplate:
-    def format(self, question: str, context: list[str]) -> str:
-        return ("Question: {question}\nContext: {context}\nAnswer:").format(
-            question=question,
-            context="\n".join(context),
-        )
+        return Content("Answer")

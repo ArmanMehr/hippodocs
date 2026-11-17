@@ -127,6 +127,12 @@ class MissingFilename(ValidationError):
     error_code = "missing_filename"
 
 
+class UnsupportedDocument(ClientError):
+    status_code = 422
+    error_code = "unsupported_document_content"
+    detail = "Document contains content that is not supported"
+
+
 class ExternalAPIError(ServerError):
     status_code = 502
     error_code = "external_api_error"

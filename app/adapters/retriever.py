@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from langfuse import observe
 from sqlalchemy import text
 
+from app.domain.models import Content
 from app.domain.views import RetrievedChunkView
 from app.services.ports import TextEmbedder
 from app.services.uow import SQLAlchemyUnitOfWork
@@ -42,7 +43,7 @@ class PgVectorRetriever:
                 },
             )
             return [
-                RetrievedChunkView(chunk_id=row.chunk_id, content=row.content)
+                RetrievedChunkView(chunk_id=row.chunk_id, text=row.content)
                 for row in results
             ]
 
@@ -75,7 +76,7 @@ class PgVectorRetriever:
                 },
             )
             return [
-                RetrievedChunkView(chunk_id=row.chunk_id, content=row.content)
+                RetrievedChunkView(chunk_id=row.chunk_id, text=row.content)
                 for row in results
             ]
 
@@ -91,7 +92,7 @@ class BM25Retriever:
         capture_output=True,
     )
     def retrieve_in_document(
-        self, document_id: int, query_text: str, top_k: int
+        self, document_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
         stmt = text(
             """
@@ -112,14 +113,14 @@ class BM25Retriever:
                 stmt,
                 {
                     "document_id": document_id,
-                    "query_text": query_text,
+                    "query_text": query.value,
                     "top_k": top_k,
                 },
             )
             return [
                 RetrievedChunkView(
                     chunk_id=row.chunk_id,
-                    content=row.content,
+                    text=row.content,
                     relevance=row.relevance,
                 )
                 for row in results
@@ -132,7 +133,7 @@ class BM25Retriever:
         capture_output=True,
     )
     def retrieve_in_workspace(
-        self, workspace_id: int, query_text: str, top_k: int
+        self, workspace_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
         stmt = text(
             """
@@ -153,14 +154,14 @@ class BM25Retriever:
                 stmt,
                 {
                     "workspace_id": workspace_id,
-                    "query_text": query_text,
+                    "query_text": query.value,
                     "top_k": top_k,
                 },
             )
             return [
                 RetrievedChunkView(
                     chunk_id=row.chunk_id,
-                    content=row.content,
+                    text=row.content,
                     relevance=row.relevance,
                 )
                 for row in results
@@ -195,8 +196,8 @@ class HybridRetriever:
         sorted_chunk_ids = [s[0] for s in sorted(scores.items(), key=lambda x: -x[1])]
         return [chunk_map[chunk_id] for chunk_id in sorted_chunk_ids]
 
-    def _extract_query_vector(self, query_text: str) -> list[float]:
-        query_embedding = self.embedder.embed_query(query_text)
+    def _extract_query_vector(self, query: Content) -> list[float]:
+        query_embedding = self.embedder.embed_query(query.value)
         return list(query_embedding.vector)
 
     def _fuse_results(
@@ -209,12 +210,12 @@ class HybridRetriever:
         return hybrid_chunks[:top_k]
 
     def retrieve_in_workspace(
-        self, workspace_id: int, query_text: str, top_k: int
+        self, workspace_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
-        query_vector = self._extract_query_vector(query_text)
+        query_vector = self._extract_query_vector(query)
         sparse_chunks = self.sparse_retriever.retrieve_in_workspace(
             workspace_id=workspace_id,
-            query_text=query_text,
+            query=query,
             top_k=self.top_k_single,
         )
         dense_chunks = self.dense_retriever.retrieve_in_workspace(
@@ -225,12 +226,12 @@ class HybridRetriever:
         return self._fuse_results(sparse_chunks, dense_chunks, top_k)
 
     def retrieve_in_document(
-        self, document_id: int, query_text: str, top_k: int
+        self, document_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]:
-        query_vector = self._extract_query_vector(query_text)
+        query_vector = self._extract_query_vector(query)
         sparse_chunks = self.sparse_retriever.retrieve_in_document(
             document_id=document_id,
-            query_text=query_text,
+            query=query,
             top_k=self.top_k_single,
         )
         dense_chunks = self.dense_retriever.retrieve_in_document(

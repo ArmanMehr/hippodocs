@@ -1,12 +1,11 @@
-import structlog
+from functools import cache
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
 from app.adapters.retriever import BM25Retriever, HybridRetriever, PgVectorRetriever
 from app.adapters.security import (
-    LocalPresidioPIIRedactor,
-    LocalPresidioRegexOutputValidator,
-    RegexInputSanitizer,
+    LocalPresidioInputValidator,
+    LocalPresidioOutputValidator,
 )
 from app.adapters.text_embedder import (
     LangchainEmbedder,
@@ -19,9 +18,9 @@ from app.configs import get_settings
 from app.exceptions import UnsupportedProvider
 from app.observability import create_langchain_callback_handler, get_langfuse_client
 from app.services.ports import (
-    InputSanitizer,
+    InputValidator,
     LLMChat,
-    PIIRedactor,
+    OutputValidator,
     Retriever,
     TextEmbedder,
     TextSplitter,
@@ -29,14 +28,10 @@ from app.services.ports import (
 from app.services.rag_service import (
     DocumentIngestionService,
     FileReaderService,
-    InputValidatorService,
-    OutputValidatorService,
     RagService,
     WorkspaceService,
 )
 from app.services.uow import SQLAlchemyUnitOfWork, UnitOfWork
-
-logger = structlog.get_logger(__name__)
 
 
 def _create_langchain_embedder(
@@ -86,6 +81,7 @@ def _create_llm(
             raise UnsupportedProvider()
 
 
+@cache
 def create_text_embedder() -> TextEmbedder:
     s = get_settings()
     return _create_langchain_embedder(
@@ -96,6 +92,7 @@ def create_text_embedder() -> TextEmbedder:
     )
 
 
+@cache
 def create_llm_chat() -> LLMChat:
     s = get_settings()
     return _create_llm(
@@ -106,6 +103,7 @@ def create_llm_chat() -> LLMChat:
     )
 
 
+@cache
 def create_text_splitter() -> TextSplitter:
     s = get_settings()
     return LangChainRecursiveTextSplitter(
@@ -113,6 +111,7 @@ def create_text_splitter() -> TextSplitter:
     )
 
 
+@cache
 def create_file_reader_registry() -> FileReaderRegistry:
     registry = FileReaderRegistry()
     registry.register("pdf", PdfReader())
@@ -121,28 +120,20 @@ def create_file_reader_registry() -> FileReaderRegistry:
     return registry
 
 
+@cache
 def create_file_reader() -> FileReaderService:
     registry = create_file_reader_registry()
     return FileReaderService(registry)
 
 
-def create_input_sanitizer() -> InputSanitizer:
-    return RegexInputSanitizer()
+@cache
+def create_input_validator() -> InputValidator:
+    return LocalPresidioInputValidator()
 
 
-def create_pii_redactor() -> PIIRedactor:
-    return LocalPresidioPIIRedactor()
-
-
-def create_input_validator() -> InputValidatorService:
-    input_sanitizer = create_input_sanitizer()
-    pii_redactor = create_pii_redactor()
-    return InputValidatorService(input_sanitizer, pii_redactor)
-
-
-def create_output_validator() -> OutputValidatorService:
-    validator = LocalPresidioRegexOutputValidator()
-    return OutputValidatorService(validator)
+@cache
+def create_output_validator() -> OutputValidator:
+    return LocalPresidioOutputValidator()
 
 
 def create_uow() -> UnitOfWork:
@@ -158,6 +149,7 @@ def create_ingestion_service(uow: UnitOfWork | None = None) -> DocumentIngestion
         uow=uow or create_uow(),
         splitter=create_text_splitter(),
         embedder=create_text_embedder(),
+        input_validator=create_input_validator(),
     )
 
 
@@ -192,4 +184,6 @@ def create_rag_service(
         llm=llm or create_llm_chat(),
         top_k=s.TOP_K_HYBRID,
         chat_prompt=LangchainPromptTemplate(s.RAG_PROMPT_TEMPLATE),
+        input_validator=create_input_validator(),
+        output_validator=create_output_validator(),
     )

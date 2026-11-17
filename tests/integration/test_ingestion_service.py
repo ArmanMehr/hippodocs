@@ -1,7 +1,6 @@
 import pytest
 
 from app.domain.models import Chunk
-from app.exceptions import DocumentNotFound
 from app.services.rag_service import (
     DocumentIngestionService,
     WorkspaceNotFound,
@@ -9,16 +8,19 @@ from app.services.rag_service import (
 from app.services.uow import UnitOfWork
 from tests.conftest import (
     FakeEmbedder,
+    FakeInputValidator,
     FakeSplitter,
     FakeUnitOfWork,
-    seed_document,
     seed_workspace,
 )
 
 
 def get_ingestion_service(uow: UnitOfWork) -> DocumentIngestionService:
     return DocumentIngestionService(
-        uow=uow, splitter=FakeSplitter(), embedder=FakeEmbedder()
+        uow=uow,
+        splitter=FakeSplitter(),
+        embedder=FakeEmbedder(),
+        input_validator=FakeInputValidator(),
     )
 
 
@@ -32,31 +34,15 @@ def get_chunks(uow: UnitOfWork, document_id: int) -> list[Chunk]:
     return []
 
 
-@pytest.fixture
-def document_id(uow: UnitOfWork) -> int:
-    return seed_document(uow, "Text1. Text2")
-
-
-@pytest.fixture
-def ingested_document(document_id: int, uow: UnitOfWork) -> int:
-    get_ingestion_service(uow).ingest_document(document_id)
-    return document_id
-
-
-def test_ingest_unknown_document_raises_error(uow: UnitOfWork):
-    with pytest.raises(DocumentNotFound):
-        get_ingestion_service(uow).ingest_document(document_id=999)
-
-
 def test_ingest_unknown_workspace_raises_error(uow: UnitOfWork):
     with pytest.raises(WorkspaceNotFound):
-        get_ingestion_service(uow).ingest_workspace(workspace_id=999)
+        get_ingestion_service(uow).add_document("Text", workspace_id=999, title="Title")
 
 
-def test_ingest_workspace_with_no_documents_is_noop(uow: UnitOfWork):
+def test_retry_ingestion_with_no_documents_is_noop(uow: UnitOfWork):
     workspace_id = seed_workspace(uow)
 
-    get_ingestion_service(uow).ingest_workspace(workspace_id)
+    get_ingestion_service(uow).retry_ingestion_in_workspace(workspace_id)
 
     if isinstance(uow, FakeUnitOfWork):
         assert not [
@@ -66,25 +52,38 @@ def test_ingest_workspace_with_no_documents_is_noop(uow: UnitOfWork):
         ]
 
 
-def test_no_content_after_splitting(uow: UnitOfWork):
-    doc_id = seed_document(uow, ". ")
+def test_add_document_reuses_existing_document_by_content(uow: UnitOfWork):
+    workspace_id = seed_workspace(uow)
+    service = get_ingestion_service(uow)
 
-    get_ingestion_service(uow).ingest_document(doc_id)
+    first_id, _, _ = service.add_document("Text1. Text2", workspace_id, "First")
+    second_id, _, _ = service.add_document("Text1. Text2", workspace_id, "Second")
 
-    doc = uow.documents.get(doc_id)
-    assert doc
-    assert doc.is_preprocessed
-    assert not get_chunks(uow, doc_id)
-
-
-def test_marks_document_preprocessed(ingested_document: int, uow: UnitOfWork):
-    doc = uow.documents.get(ingested_document)
-    assert doc
-    assert doc.is_preprocessed
+    assert first_id == second_id
+    assert len(uow.documents._documents) == 1  # type: ignore[attr-defined]
 
 
-def test_saved_chunks_after_splitting(ingested_document: int, uow: UnitOfWork):
-    chunks = get_chunks(uow, ingested_document)
+def test_add_document_returns_id_title_and_validated_content(uow: UnitOfWork):
+    workspace_id = seed_workspace(uow)
+
+    document_id, title, content = get_ingestion_service(uow).add_document(
+        "Text1. Text2", workspace_id, "Title"
+    )
+
+    assert document_id == 1
+    assert title == "Title"
+    assert content == "Text1. Text2"
+    doc = uow.documents.get(document_id)
+    assert doc is not None
+    assert doc.status.value == "done"
+
+
+def test_saved_chunks_after_splitting(uow: UnitOfWork):
+    workspace_id = seed_workspace(uow)
+    document_id, _, _ = get_ingestion_service(uow).add_document(
+        "Text1. Text2", workspace_id, "Title"
+    )
+    chunks = get_chunks(uow, document_id)
 
     assert [chunk.content.value for chunk in chunks] == ["Text1", "Text2"]
     for chunk in chunks:

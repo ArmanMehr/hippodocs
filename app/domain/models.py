@@ -1,4 +1,6 @@
+import hashlib
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Self
 
 
@@ -18,6 +20,10 @@ class Content:
         if not self.value.strip():
             raise EmptyContentError("Chunk content cannot be empty or whitespace.")
 
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.value.encode("utf-8")).hexdigest()
+
 
 @dataclass
 class Workspace:
@@ -28,19 +34,27 @@ class Workspace:
         return ("name",)
 
 
+class DocumentStatus(str, Enum):
+    PENDING = "pending"
+    CHUNKING_FAILED = "chunking_failed"
+    CHUNKED = "chunked"
+    EMBED_FAILED = "embed_failed"
+    DONE = "done"
+
+
 @dataclass
 class Document:
     content: Content
     workspace: Workspace
     title: str | None = None
-    _is_preprocessed: bool = False
+    status: DocumentStatus = DocumentStatus.PENDING
+
+    def is_done(self) -> bool:
+        return self.status == DocumentStatus.DONE
 
     @property
-    def is_preprocessed(self) -> bool:
-        return self._is_preprocessed
-
-    def mark_preprocessed(self) -> None:
-        self._is_preprocessed = True
+    def text(self) -> str:
+        return self.content.value
 
 
 @dataclass(frozen=True)
@@ -96,3 +110,7 @@ class Chunk:
     @property
     def ndim(self) -> int:
         return len(self.embedding_vector) if self.embedding_vector is not None else 0
+
+    @property
+    def text(self) -> str:
+        return self.content.value

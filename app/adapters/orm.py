@@ -2,8 +2,8 @@ from typing import Any, override
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Boolean,
     Column,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -17,7 +17,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import composite, registry, relationship
 
 from app.configs import get_settings
-from app.domain.models import Chunk, Content, Document, Embedding, Workspace
+from app.domain.models import (
+    Chunk,
+    Content,
+    Document,
+    DocumentStatus,
+    Embedding,
+    Workspace,
+)
 
 
 class EmbeddingVector(TypeDecorator[Vector]):
@@ -62,6 +69,9 @@ class ContentType(TypeDecorator[str]):
         return value
 
 
+document_status_type = [status.value for status in DocumentStatus]
+
+
 workspaces_table = Table(
     "workspaces",
     mapper_registry.metadata,
@@ -81,8 +91,35 @@ documents_table = Table(
         nullable=False,
     ),
     Column("title", String(255), nullable=True),
-    Column("is_preprocessed", Boolean, nullable=False, default=False),
-    Index("ix_documents_workspace_preprocessed", "workspace_id", "is_preprocessed"),
+    Column(
+        "status",
+        Enum(*document_status_type, name="document_status_enum"),
+        nullable=False,
+        server_default=DocumentStatus.PENDING.value,
+    ),
+    Index("ix_documents_workspace_status", "workspace_id", "status"),
+)
+
+document_hashes_table = Table(
+    "document_hashes",
+    mapper_registry.metadata,
+    Column(
+        "workspace_id",
+        Integer,
+        ForeignKey("workspaces.workspace_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("documents.document_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column("content_hash", String(64), nullable=False),
+    UniqueConstraint("workspace_id", "document_id"),
+    UniqueConstraint("workspace_id", "content_hash"),
 )
 
 chunks_table = Table(
@@ -107,6 +144,12 @@ chunks_table = Table(
     Column("embedding_vector", EmbeddingVector(), nullable=True),
     Column("embedding_model_id", String(255), nullable=True),
     UniqueConstraint("document_id", "content", name="uq_document_content"),
+    Index(
+        "chunks_bm25_idx",
+        "chunk_id",
+        "content",
+        postgresql_using="paradedb",
+    ),
 )
 
 
@@ -116,7 +159,7 @@ def start_mappers() -> None:
         Document,
         documents_table,
         properties={
-            "_is_preprocessed": documents_table.c.is_preprocessed,
+            "status": documents_table.c.status,
             "workspace": relationship(Workspace, lazy="select"),
         },
     )

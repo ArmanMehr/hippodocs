@@ -1,17 +1,20 @@
-from collections.abc import Sequence
 from typing import BinaryIO
 
 import structlog
 from langfuse import observe
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
-from app.domain.models import Chunk, Content, Document, Workspace
-from app.exceptions import DocumentNotFound, WorkspaceNotFound
+from app.domain.models import Content, Document, DocumentStatus, Workspace
+from app.exceptions import (
+    DocumentNotFound,
+    ServerError,
+    UnsupportedDocument,
+    WorkspaceNotFound,
+)
 from app.services.ports import (
-    InputSanitizer,
+    InputValidator,
     LLMChat,
     OutputValidator,
-    PIIRedactor,
     PromptTemplate,
     Retriever,
     TextEmbedder,
@@ -118,122 +121,134 @@ class DocumentIngestionService:
         uow: UnitOfWork,
         splitter: TextSplitter,
         embedder: TextEmbedder,
+        input_validator: InputValidator,
     ) -> None:
         self.uow = uow
         self.splitter = splitter
         self.embedder = embedder
+        self.validator = input_validator
 
     def add_document(
         self, text: str, workspace_id: int, title: str
     ) -> tuple[int, str, str]:
+        content = Content(text)
         with self.uow:
-            workspace = self.uow.workspaces.get(workspace_id)
-            if workspace is None:
-                raise WorkspaceNotFound()
+            workspace = self._ensure_workspace(workspace_id)
+            document = self._check_existing_document(workspace_id, content.sha256)
 
-            document = Document(
-                content=Content(text),
-                workspace=workspace,
-                title=title or None,
-            )
-            self.uow.documents.add(document)
-            self.uow.commit()
-            document_id = document.document_id  # type: ignore[attr-defined]
+            if not document:
+                content_valid = self.validator.validate(content)
+                title_valid = self.validator.validate(Content(title)).value
 
-        self.ingest_document(document_id)
-        return document_id, title, text
-
-    def ingest_document(self, document_id: int) -> None:
-        with self.uow:
-            document = self.uow.documents.get(document_id=document_id)
-            if document is None:
-                raise DocumentNotFound()
-
-            contents = self.splitter.split_text(document.content.value)
-            if not contents:
-                document.mark_preprocessed()
-                return
-
-            chunks = self._embed_and_chunk_contents(
-                document.document_id,  # type: ignore[attr-defined]
-                document.workspace.workspace_id,  # type: ignore[attr-defined]
-                contents,
-            )
-            document.mark_preprocessed()
-
-            self.uow.chunks.save_all(chunks)
-            self.uow.commit()
-
-    def ingest_workspace(self, workspace_id: int) -> None:
-        with self.uow:
-            if self.uow.workspaces.get(workspace_id) is None:
-                raise WorkspaceNotFound()
-
-            documents, _ = self.uow.documents.list_unpreprocessed_by_workspace(
-                workspace_id
-            )
-
-            all_chunks: list[Chunk] = []
-            for document in documents:
-                contents = self.splitter.split_text(document.content.value)
-                if not contents:
-                    document.mark_preprocessed()
-                    continue
-
-                chunks = self._embed_and_chunk_contents(
-                    document.document_id,  # type: ignore[attr-defined]
-                    workspace_id,  # type: ignore[attr-defined]
-                    contents,
+                document = Document(
+                    content=content_valid,
+                    workspace=workspace,
+                    title=title_valid,
                 )
-                document.mark_preprocessed()
-                all_chunks.extend(chunks)
+                self.uow.documents.add(document)
+                self.uow.flush()
 
-            self.uow.chunks.save_all(all_chunks)
+                saved_document_id = document.document_id  # type: ignore[attr-defined]
+                self.uow.documents.add_content_hash(
+                    workspace_id,
+                    saved_document_id,
+                    content.sha256,
+                )
+                self.uow.commit()
+            else:
+                logger.debug(f"Document already exists. The status: {document.status}")
+                content = document.content
+
+            document_id = document.document_id  # type: ignore[attr-defined]
+            _ = document.workspace.workspace_id  # type: ignore[attr-defined]
+
+        self._ingest_document(document)
+        return document_id, title, content.value
+
+    def retry_ingestion_in_workspace(self, workspace_id: int) -> None:
+        with self.uow:
+            self._ensure_workspace(workspace_id)
+            documents = self.uow.documents.list_undone_by_workspace(workspace_id)
+            for document in documents:
+                _ = document.workspace.workspace_id  # type: ignore[attr-defined]
+
+        for document in documents:
+            self._ingest_document(document)
+
+    def _ingest_document(self, document: Document) -> None:
+        while document.status != DocumentStatus.DONE:
+            document = self._route_document(document)
+
+    def _route_document(self, document: Document) -> Document:
+        if document.status in (DocumentStatus.PENDING, DocumentStatus.CHUNKING_FAILED):
+            return self._chunk(document)
+        elif document.status in (DocumentStatus.CHUNKED, DocumentStatus.EMBED_FAILED):
+            return self._embed(document)
+        else:
+            raise ServerError()
+
+    def _chunk(self, document: Document) -> Document:
+        workspace_id = document.workspace.workspace_id  # type: ignore[attr-defined]
+        document_id = document.document_id  # type: ignore[attr-defined]
+
+        try:
+            chunks = self.splitter.split_text(document.text, document_id, workspace_id)
+        except Exception:
+            with self.uow:
+                self.uow.documents.update_status(
+                    document_id=document_id,
+                    new_status=DocumentStatus.CHUNKING_FAILED,
+                )
+                self.uow.commit()
+            document.status = DocumentStatus.CHUNKING_FAILED
+            raise
+
+        if not chunks:
+            raise UnsupportedDocument()
+
+        with self.uow:
+            self.uow.chunks.save_all(chunks)
+            self.uow.documents.update_status(document_id, DocumentStatus.CHUNKED)
             self.uow.commit()
+        document.status = DocumentStatus.CHUNKED
 
-    def _embed_and_chunk_contents(
-        self, document_id: int, workspace_id: int, contents: Sequence[Content]
-    ) -> list[Chunk]:
-        embeddings = self.embedder.embed_texts([c.value for c in contents])
-        return [
-            Chunk(
-                document_id=document_id,
-                workspace_id=workspace_id,
-                content=content,
-            ).add_embedding(embedding)
-            for content, embedding in zip(contents, embeddings, strict=True)
-        ]
+        return document
 
+    def _embed(self, document: Document) -> Document:
+        document_id = document.document_id  # type: ignore[attr-defined]
+        with self.uow:
+            chunks = self.uow.chunks.get_by_document(document_id)
 
-class InputValidatorService:
-    def __init__(self, input_sanitizer: InputSanitizer, pii_redactor: PIIRedactor):
-        self.input_sanitizer = input_sanitizer
-        self.pii_redactor = pii_redactor
+        try:
+            embeddings = self.embedder.embed_texts([c.text for c in chunks])
+            chunks_embedded = [
+                c.add_embedding(emb) for c, emb in zip(chunks, embeddings, strict=True)
+            ]
+        except Exception:
+            with self.uow:
+                self.uow.documents.update_status(
+                    document_id, DocumentStatus.EMBED_FAILED
+                )
+                self.uow.commit()
+            raise
 
-    @observe(
-        name="input-validator",
-        as_type="chain",
-        capture_input=False,
-        capture_output=True,
-    )
-    def validate(self, text: str) -> str:
-        sanitized = self.input_sanitizer.sanitize(text)
-        redacted = self.pii_redactor.redact(sanitized)
-        return redacted
+        with self.uow:
+            self.uow.chunks.update_embeddings(chunks_embedded)
+            self.uow.documents.update_status(document_id, DocumentStatus.DONE)
+            self.uow.commit()
+        document.status = DocumentStatus.DONE
+        return document
 
+    def _ensure_workspace(self, workspace_id: int) -> Workspace:
+        workspace = self.uow.workspaces.get(workspace_id)
+        if workspace is None:
+            raise WorkspaceNotFound()
+        return workspace
 
-class OutputValidatorService:
-    def __init__(self, output_validator: OutputValidator):
-        self.output_validator = output_validator
-
-    @observe(
-        name="output-validator",
-        as_type="chain",
-        capture_input=False,
-        capture_output=True,
-    )
-    def validate(self, text: str) -> str:
-        return self.output_validator.validate(text)
+    def _check_existing_document(self, workspace_id: int, content_hash: str):
+        return self.uow.documents.get_identical_document_in_workspace(
+            workspace_id=workspace_id, content_hash=content_hash
+        )
 
 
 class RagService:
@@ -244,12 +259,16 @@ class RagService:
         llm: LLMChat,
         top_k: int,
         chat_prompt: PromptTemplate,
+        input_validator: InputValidator,
+        output_validator: OutputValidator,
     ) -> None:
         self.uow = uow
         self.retriever = retriever
         self.llm = llm
         self.top_k = top_k
         self.chat_prompt = chat_prompt
+        self.input_validator = input_validator
+        self.output_validator = output_validator
 
     def _ensure_workspace(self, workspace_id: int) -> None:
         with self.uow:
@@ -265,11 +284,11 @@ class RagService:
     )
     def query(self, workspace_id: int, query_text: str) -> str:
         self._ensure_workspace(workspace_id)
-        chunks = self.retriever.retrieve_in_workspace(
-            workspace_id=workspace_id,
-            query_text=query_text,
-            top_k=self.top_k,
+        query_content = self.input_validator.validate(Content(query_text))
+        chunks_view = self.retriever.retrieve_in_workspace(
+            workspace_id=workspace_id, query=query_content, top_k=self.top_k
         )
-        context = "\n".join([c.content for c in chunks])
-        prompt_text = self.chat_prompt.format(context=context, question=query_text)
-        return self.llm.invoke(prompt_text)
+        context = "\n".join([c.text for c in chunks_view])
+        prompt = self.chat_prompt.format(context=context, question=query_text)
+        llm_output = self.llm.invoke(prompt)
+        return self.output_validator.validate(llm_output).value

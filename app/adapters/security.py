@@ -8,6 +8,7 @@ from presidio_anonymizer.entities.engine.recognizer_result import (
     RecognizerResult as AnonymizerRecognizerResult,
 )
 
+from app.domain.models import Content
 from app.exceptions import (
     SuspiciousInputError,
 )
@@ -16,7 +17,7 @@ from app.observability import observe
 logger = structlog.get_logger(__name__)
 
 
-class RegexInputSanitizer:
+class RegexSanitizer:
     INJECTION_PATTERNS: ClassVar[list[tuple[str, str]]] = [
         ("ignore_previous_instructions", r"ignore\s+(all\s+)?previous\s+instructions"),
         ("forget_previous", r"forget\s+(all\s+)?previous"),
@@ -106,7 +107,28 @@ class LocalPresidioPIIRedactor:
         return anonymized.text
 
 
-class LocalPresidioRegexOutputValidator:
+class LocalPresidioInputValidator:
+    def __init__(
+        self,
+        input_sanitizer: RegexSanitizer | None = None,
+        pii_redactor: LocalPresidioPIIRedactor | None = None,
+    ) -> None:
+        self.input_sanitizer = input_sanitizer or RegexSanitizer()
+        self.pii_redactor = pii_redactor or LocalPresidioPIIRedactor()
+
+    @observe(
+        name="input-validator",
+        as_type="chain",
+        capture_input=False,
+        capture_output=True,
+    )
+    def validate(self, content: Content) -> Content:
+        sanitized = self.input_sanitizer.sanitize(content.value)
+        redacted = self.pii_redactor.redact(sanitized)
+        return Content(redacted)
+
+
+class LocalPresidioOutputValidator:
     SECRET_PATTERNS: ClassVar[list[tuple[str, str]]] = [
         ("openai_api_key", r"sk-[A-Za-z0-9]{20,}"),
         ("aws_access_key", r"AKIA[0-9A-Z]{16}"),
@@ -130,15 +152,16 @@ class LocalPresidioRegexOutputValidator:
         ]
 
     @observe(
-        name="output-validate",
-        as_type="guardrail",
+        name="output-validator",
+        as_type="chain",
         capture_input=False,
-        capture_output=False,
+        capture_output=True,
     )
-    def validate(self, answer: str) -> str:
+    def validate(self, content: Content) -> Content:
         suspicious_patterns = []
+        text = content.value
         for name, pattern in self._secret_patterns:
-            if pattern.search(answer):
+            if pattern.search(text):
                 suspicious_patterns.append(name)
 
         if suspicious_patterns:
@@ -146,10 +169,10 @@ class LocalPresidioRegexOutputValidator:
                 "suspicious_information_in_model_output",
                 patterns=sorted(set(suspicious_patterns)),
             )
-            return "[CONTENT BLOCKED]"
+            return Content("[CONTENT BLOCKED]")
 
         results = self._analyzer.analyze(
-            text=answer, language="en", entities=self.PII_ENTITIES
+            text=text, language="en", entities=self.PII_ENTITIES
         )
 
         if results:
@@ -157,6 +180,6 @@ class LocalPresidioRegexOutputValidator:
                 "pii_detected_in_model_output",
                 entity_types=sorted({result.entity_type for result in results}),
             )
-            return "[CONTENT BLOCKED]"
+            return Content("[CONTENT BLOCKED]")
 
-        return answer
+        return content

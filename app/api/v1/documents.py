@@ -4,7 +4,6 @@ from langfuse import observe
 from app.api.dependencies import (
     file_reader_dep,
     ingestion_service_dep,
-    input_validator_dep,
     workspace_service_dep,
 )
 from app.configs import get_settings
@@ -18,7 +17,6 @@ from app.schemas import (
 from app.services.rag_service import (
     DocumentIngestionService,
     FileReaderService,
-    InputValidatorService,
     WorkspaceService,
 )
 
@@ -63,7 +61,6 @@ def upload_document(
     workspace_id: int = Path(...),
     file: UploadFile = File(...),  # noqa: B008
     file_reader: FileReaderService = file_reader_dep,
-    input_validator: InputValidatorService = input_validator_dep,
     ingestion_service: DocumentIngestionService = ingestion_service_dep,
 ) -> AddDocumentResponseSchema:
     if not file.filename:
@@ -74,9 +71,6 @@ def upload_document(
 
     text = file_reader.read(file.file, file.filename)
     title = file_reader.get_filename_no_ext(file.filename)
-
-    text = input_validator.validate(text)
-    title = input_validator.validate(title)
 
     document_id, title, text = ingestion_service.add_document(
         text=text, workspace_id=workspace_id, title=title

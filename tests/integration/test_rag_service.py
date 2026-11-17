@@ -6,7 +6,9 @@ from app.domain.models import Chunk, Content, Document, Embedding
 from app.services.rag_service import RagService, WorkspaceNotFound
 from app.services.uow import UnitOfWork
 from tests.conftest import (
+    FakeInputValidator,
     FakeLLMChat,
+    FakeOutputValidator,
     FakeRetriever,
     FakeUnitOfWork,
     seed_workspace,
@@ -26,6 +28,8 @@ def rag_service(uow: FakeUnitOfWork, llm: FakeLLMChat) -> RagService:
         llm=llm,
         top_k=2,
         chat_prompt=LangchainPromptTemplate(get_settings().RAG_PROMPT_TEMPLATE),
+        input_validator=FakeInputValidator(),
+        output_validator=FakeOutputValidator(),
     )
 
 
@@ -69,8 +73,8 @@ def test_query_builds_prompt_from_retrieved_context_and_question(
     rag_service.query(workspace_id, "what?")
     prompt = llm.prompts[0]
 
-    assert "chunk0\nchunk1" in prompt
-    assert "Question: what?" in prompt
+    assert "chunk0\nchunk1" in prompt.value
+    assert "what?" in prompt.value
 
 
 def test_query_with_no_chunks_still_answers_with_empty_context(
@@ -79,4 +83,4 @@ def test_query_with_no_chunks_still_answers_with_empty_context(
     workspace_id = seed_workspace(uow)
     rag_service.query(workspace_id, "what?")
 
-    assert "Question: what?" in llm.prompts[0]
+    assert "what?" in llm.prompts[0].value

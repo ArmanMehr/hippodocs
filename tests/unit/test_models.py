@@ -63,14 +63,6 @@ def test_zero_dim_empty_embedding_chunk():
     assert make_chunk().ndim == 0
 
 
-def test_document_mark_preprocessed():
-    doc = make_document()
-
-    assert not doc.is_preprocessed
-    doc.mark_preprocessed()
-    assert doc.is_preprocessed
-
-
 def test_chunk_embedding_property_returns_embedding():
     chunk = make_chunk()
     chunk.embedding = Embedding((1.0, 2.0), model_id="m1")

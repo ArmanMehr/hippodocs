@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from app.domain.models import Content, Embedding
+from app.domain.models import Chunk, Content, Embedding
 from app.domain.views import RetrievedChunkView
 
 
@@ -11,7 +11,9 @@ class FileReader(Protocol):
 
 
 class TextSplitter(Protocol):
-    def split_text(self, text: str) -> list[Content]: ...
+    def split_text(
+        self, text: str, document_id: int, workspace_id: int
+    ) -> list[Chunk]: ...
 
 
 class TextEmbedder(Protocol):
@@ -25,30 +27,26 @@ class LLMChat(Protocol):
     model_id: str
     system_prompt: str
 
-    def invoke(self, query: str) -> str: ...
+    def invoke(self, query: Content) -> Content: ...
 
 
 class PromptTemplate(Protocol):
-    def format(self, **kwargs: str) -> str: ...
+    def format(self, **kwargs: str) -> Content: ...
 
 
-class InputSanitizer(Protocol):
-    def sanitize(self, text: str) -> str: ...
-
-
-class PIIRedactor(Protocol):
-    def redact(self, text: str) -> str: ...
+class InputValidator(Protocol):
+    def validate(self, content: Content) -> Content: ...
 
 
 class OutputValidator(Protocol):
-    def validate(self, answer: str) -> str: ...
+    def validate(self, content: Content) -> Content: ...
 
 
 class Retriever(Protocol):
     def retrieve_in_document(
-        self, document_id: int, query_text: str, top_k: int
+        self, document_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]: ...
 
     def retrieve_in_workspace(
-        self, workspace_id: int, query_text: str, top_k: int
+        self, workspace_id: int, query: Content, top_k: int
     ) -> list[RetrievedChunkView]: ...

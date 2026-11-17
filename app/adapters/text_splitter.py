@@ -1,6 +1,6 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.domain.models import Content
+from app.domain.models import Chunk, Content
 from app.observability import observe
 
 
@@ -18,6 +18,14 @@ class LangChainRecursiveTextSplitter:
         capture_input=False,
         capture_output=False,
     )
-    def split_text(self, text: str) -> list[Content]:
+    def split_text(self, text: str, document_id: int, workspace_id: int) -> list[Chunk]:
         chunks = self._chunker.split_text(text=text)
-        return [Content(value=part) for part in chunks if part.strip()]
+        return [
+            Chunk(
+                document_id=document_id,
+                workspace_id=workspace_id,
+                content=Content(value=part),
+            )
+            for part in chunks
+            if part.strip()
+        ]
