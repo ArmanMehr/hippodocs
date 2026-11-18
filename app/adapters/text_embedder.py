@@ -124,20 +124,26 @@ class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
         base_url: str,
         api_key: str,
         dimensions: int,
+        max_retries: int | None = None,
         langfuse_client: Langfuse | None = None,
         max_batch_size: int | None = None,
     ) -> None:
         super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
-
+        base_url_arg = base_url if base_url else None
+        max_retries = (
+            max_retries
+            if max_retries is not None
+            else get_settings().EMBEDDING_MAX_RETRIES
+        )
         self._embedder = OpenAIEmbeddings(
             model=model_id,
-            base_url=base_url,
+            base_url=base_url_arg,
             api_key=SecretStr(api_key),
             dimensions=dimensions,
             check_embedding_ctx_length=False,
             chunk_size=self.max_batch_size,
+            max_retries=max_retries,
         )
-
         self.model_id = model_id
 
     @property
@@ -155,9 +161,10 @@ class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
         max_batch_size: int | None = None,
     ) -> None:
         super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
+        base_url_arg = base_url if base_url else None
         self._embedder = OllamaEmbeddings(
             model=model_id,
-            base_url=base_url or "http://localhost:11434",
+            base_url=base_url_arg,
             dimensions=dimensions,
         )
         self.model_id = model_id

@@ -25,19 +25,17 @@ Security rules:
 SUPPORTED_LLM_PROVIDERS = Literal["ollama", "openai"]
 SUPPORTED_EMBEDDING_PROVIDERS = Literal["ollama", "openai"]
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-OPENAI_BASE_URL = "https://api.openai.com/v1"
-
 
 class Configs(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow", frozen=True)
 
     @model_validator(mode="after")
     def _ollama_default_base_url(self) -> "Configs":
+        ollama_base_url = "http://localhost:11434"
         if self.EMBEDDING_PROVIDER == "ollama" and not self.EMBEDDING_BASE_URL:
-            object.__setattr__(self, "EMBEDDING_BASE_URL", OLLAMA_BASE_URL)
+            object.__setattr__(self, "EMBEDDING_BASE_URL", ollama_base_url)
         if self.LLM_PROVIDER == "ollama" and not self.LLM_BASE_URL:
-            object.__setattr__(self, "LLM_BASE_URL", OLLAMA_BASE_URL)
+            object.__setattr__(self, "LLM_BASE_URL", ollama_base_url)
         return self
 
     @field_validator("RAG_PROMPT_TEMPLATE")
@@ -62,17 +60,17 @@ class Configs(BaseSettings):
 
     # Embedding
     EMBEDDING_PROVIDER: SUPPORTED_EMBEDDING_PROVIDERS = "openai"
-    EMBEDDING_BASE_URL: str = OPENAI_BASE_URL
-    EMBEDDING_MODEL: str = ""
+    EMBEDDING_BASE_URL: str = ""
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_MAX_RETRIES: int = 5
     EMBEDDING_MAX_BATCH_SIZE: int = 256
     DIMENSIONS: int = 384
 
     # LLM
     LLM_PROVIDER: SUPPORTED_LLM_PROVIDERS = "openai"
-    LLM_BASE_URL: str = OPENAI_BASE_URL
-    LLM_MODEL: str = ""
-
-    LLM_MAX_RETRIES: int = 3
+    LLM_BASE_URL: str = ""
+    LLM_MODEL: str = "gpt-6-nano"
+    LLM_MAX_RETRIES: int = 5
     LLM_SYSTEM_PROMPT: str = _DEFAULT_SYSTEM_PROMPT
 
     # API Keys

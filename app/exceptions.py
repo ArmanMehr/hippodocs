@@ -89,7 +89,7 @@ class ProviderConnectionError(ServerError):
     error_code = "provider_unavailable"
 
 
-class UnsupportedProvider(ServerError):
+class UnsupportedProvider(ClientError):
     status_code = 400
     error_code = "unsupported_provider"
 

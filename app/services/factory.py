@@ -1,7 +1,11 @@
 from functools import cache
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
-from app.adapters.llm import LangChainOpenAILLMChat, LangchainPromptTemplate
+from app.adapters.llm import (
+    LangChainOllamaLLMChat,
+    LangChainOpenAILLMChat,
+    LangchainPromptTemplate,
+)
 from app.adapters.retriever import BM25Retriever, HybridRetriever, PgVectorRetriever
 from app.adapters.security import (
     LocalPresidioInputValidator,
@@ -39,18 +43,18 @@ def _create_langchain_embedder(
 ) -> LangchainEmbedder:
     langfuse_client = get_langfuse_client()
     match provider:
-        case "ollama":
-            embedder: LangchainEmbedder = LangChainOllamaTextEmbedder(
-                model_id=model_id,
-                base_url=base_url,
-                dimensions=dimensions,
-                langfuse_client=langfuse_client,
-            )
         case "openai":
-            embedder: LangchainEmbedder = LangChainOpenAITextEmbedder(
+            embedder = LangChainOpenAITextEmbedder(
                 model_id=model_id,
                 base_url=base_url,
                 api_key=get_settings().OPENAI_API_KEY,
+                dimensions=dimensions,
+                langfuse_client=langfuse_client,
+            )
+        case "ollama":
+            embedder = LangChainOllamaTextEmbedder(
+                model_id=model_id,
+                base_url=base_url,
                 dimensions=dimensions,
                 langfuse_client=langfuse_client,
             )
@@ -65,15 +69,21 @@ def _create_langchain_embedder(
 def _create_llm(
     provider: str, model_id: str, base_url: str, system_prompt: str
 ) -> LLMChat:
+    callback_handler = create_langchain_callback_handler()
+    callbacks = [callback_handler] if callback_handler else None
     match provider:
         case "openai":
-            callback_handler = create_langchain_callback_handler()
-            callbacks = [callback_handler] if callback_handler else None
             return LangChainOpenAILLMChat(
                 model_id=model_id,
                 base_url=base_url,
                 api_key=get_settings().OPENAI_API_KEY,
-                max_retries=10,
+                system_prompt=system_prompt,
+                callbacks=callbacks,
+            )
+        case "ollama":
+            return LangChainOllamaLLMChat(
+                model_id=model_id,
+                base_url=base_url,
                 system_prompt=system_prompt,
                 callbacks=callbacks,
             )

@@ -11,6 +11,7 @@ from openai import APITimeoutError
 from openai import RateLimitError as OpenAIRateLimitError
 from pydantic import SecretStr
 
+from app import get_settings
 from app.domain.models import Content
 from app.exceptions import LLMError, LLMTimeoutError, RateLimitError
 
@@ -23,7 +24,7 @@ class LangChainOpenAILLMChat:
         model_id: str,
         base_url: str,
         api_key: str,
-        max_retries: int,
+        max_retries: int | None = None,
         system_prompt: str = "",
         callbacks: Sequence[Any] | None = None,
     ) -> None:
@@ -31,12 +32,17 @@ class LangChainOpenAILLMChat:
         self.system_prompt = system_prompt
         self._callbacks = list(callbacks) if callbacks else []
 
+        base_url_arg = base_url if base_url else None
+        max_retries = (
+            max_retries if max_retries is not None else get_settings().LLM_MAX_RETRIES
+        )
         model = ChatOpenAI(
             model=model_id,
-            base_url=base_url,
+            base_url=base_url_arg,
             api_key=SecretStr(api_key),
             max_retries=max_retries,
         )
+
         prompt = ChatPromptTemplate.from_messages(
             [("system", system_prompt), ("user", "{input}")]
         )
@@ -71,7 +77,8 @@ class LangChainOllamaLLMChat:
         self.system_prompt = system_prompt
         self._callbacks = list(callbacks) if callbacks else []
 
-        model = ChatOllama(model=model_id, base_url=base_url)
+        base_url_arg = base_url if base_url else None
+        model = ChatOllama(model=model_id, base_url=base_url_arg)
         prompt = ChatPromptTemplate.from_messages(
             [("system", system_prompt), ("user", "{input}")]
         )
