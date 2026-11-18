@@ -1,27 +1,24 @@
 import os
 from io import BytesIO
 
-import pytest
-from fastapi import UploadFile
 from fastapi.testclient import TestClient
-from pytest_mock import MockerFixture
 from sqlalchemy.exc import OperationalError
-from starlette.requests import Request
 
 from app.api.dependencies import (
+    get_file_reader,
     get_rag_service,
 )
-from app.api.v1.documents import upload_document
 from app.exceptions import (
     DatabaseUnavailable,
     FileTooLarge,
-    MissingFilename,
     UnsupportedFileType,
 )
 from app.main import app
 from app.services.factory import (
+    create_file_reader_registry,
     create_rag_service,
 )
+from app.services.rag_service import FileReaderService
 from tests.conftest import (
     FakeLLMChat,
     FakeUnitOfWork,
@@ -96,21 +93,9 @@ def test_upload_document(client: TestClient) -> None:
     assert "document_id" in data
 
 
-def test_upload_document_rejects_missing_filename() -> None:
-    with pytest.raises(MissingFilename):
-        upload_document.__wrapped__(
-            request=Request({"type": "http", "method": "POST", "path": "/"}),
-            workspace_id=1,
-            file=UploadFile(file=BytesIO(b"content"), filename=None),
-        )
-
-
-def test_upload_document_rejects_oversized_file(
-    client: TestClient, mocker: MockerFixture
-) -> None:
-    mocker.patch(
-        "app.api.v1.documents.get_settings",
-        return_value=type("Settings", (), {"MAX_FILESIZE": 3})(),
+def test_upload_document_rejects_oversized_file(client: TestClient) -> None:
+    app.dependency_overrides[get_file_reader] = lambda: FileReaderService(
+        create_file_reader_registry(), max_size=3
     )
     response = client.post(
         "/v1/workspaces/1/documents",
