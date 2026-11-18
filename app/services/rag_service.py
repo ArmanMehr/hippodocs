@@ -1,8 +1,8 @@
-from typing import BinaryIO
-
 import structlog
+from fastapi import UploadFile
 from langfuse import observe
 
+from app import get_settings
 from app.adapters.file_reader import FileReader, FileReaderRegistry
 from app.domain.models import (
     Content,
@@ -14,6 +14,8 @@ from app.domain.models import (
 from app.exceptions import (
     DocumentNotFound,
     EmptyContent,
+    FileTooLarge,
+    MissingFilename,
     ServerError,
     UnsupportedDocument,
     WorkspaceNotFound,
@@ -105,19 +107,33 @@ class WorkspaceService:
 
 
 class FileReaderService:
-    def __init__(self, registry: FileReaderRegistry) -> None:
+    def __init__(
+        self, registry: FileReaderRegistry, max_size: int | None = None
+    ) -> None:
         self.registry = registry
+        self.max_size = max_size or get_settings().MAX_FILESIZE
 
-    def read(self, content: BinaryIO, file_name: str) -> str:
+    def read(self, file: UploadFile) -> str:
+        self._check_file_size(file)
+        file_name = self._get_file_name(file)
         extension = file_name.rsplit(".", 1)[-1].lower()
         reader = self._get_reader(extension)
-        return reader.read(content.read())
+        return reader.read(file.file.read())
 
-    def get_filename_no_ext(self, file_name: str) -> str:
-        return file_name.rsplit(".", 1)[0]
+    def get_filename_no_ext(self, file: UploadFile) -> str:
+        return self._get_file_name(file).rsplit(".", 1)[0]
 
     def _get_reader(self, file_extension: str) -> FileReader:
         return self.registry.get(file_extension)
+
+    def _get_file_name(self, file: UploadFile) -> str:
+        if not file.filename:
+            raise MissingFilename()
+        return file.filename
+
+    def _check_file_size(self, file: UploadFile) -> None:
+        if file.size is not None and file.size > self.max_size:
+            raise FileTooLarge()
 
 
 class DocumentIngestionService:

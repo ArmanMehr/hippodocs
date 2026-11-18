@@ -6,8 +6,6 @@ from app.api.dependencies import (
     ingestion_service_dep,
     workspace_service_dep,
 )
-from app.configs import get_settings
-from app.exceptions import FileTooLarge, MissingFilename
 from app.limiter import limiter
 from app.schemas import (
     AddDocumentResponseSchema,
@@ -63,19 +61,11 @@ def upload_document(
     file_reader: FileReaderService = file_reader_dep,
     ingestion_service: DocumentIngestionService = ingestion_service_dep,
 ) -> AddDocumentResponseSchema:
-    if not file.filename:
-        raise MissingFilename()
-
-    if file.size is not None and file.size > get_settings().MAX_FILESIZE:
-        raise FileTooLarge()
-
-    text = file_reader.read(file.file, file.filename)
-    title = file_reader.get_filename_no_ext(file.filename)
-
+    text = file_reader.read(file)
+    title = file_reader.get_filename_no_ext(file)
     document_id, title, text = ingestion_service.add_document(
         text=text, workspace_id=workspace_id, title=title
     )
-
     return AddDocumentResponseSchema(document_id=document_id, title=title, text=text)
 
 

@@ -2,9 +2,11 @@ from io import BytesIO
 from typing import Any
 
 import pytest
+from fastapi import UploadFile
 from pytest_mock import MockerFixture
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
+from app.domain.models import Content, EmptyContentError
 from app.exceptions import NoExtractableText, UnsupportedFileType
 from app.services.rag_service import FileReaderService
 
@@ -87,11 +89,24 @@ def test_file_reader_service_reads_using_extension():
     registry = FileReaderRegistry()
     registry.register("md", MarkdownReader())
     service = FileReaderService(registry)
-    assert service.read(BytesIO(b"# Document"), "README.MD") == "# Document"
+    file = UploadFile(filename="README.MD", file=BytesIO(b"# Document"))
+    assert service.read(file) == "# Document"
 
 
 def test_file_reader_service_returns_filename_without_extension():
     service = FileReaderService(FileReaderRegistry())
-    assert (
-        service.get_filename_no_ext("folder/report.final.md") == "folder/report.final"
-    )
+    file = UploadFile(filename="folder/report.final.md", file=BytesIO(b"# Document"))
+    assert service.get_filename_no_ext(file) == "folder/report.final"
+
+
+def test_empty_content_error_for_title_in_nameless_file():
+    registry = FileReaderRegistry()
+    registry.register("md", MarkdownReader())
+    service = FileReaderService(registry)
+
+    file = UploadFile(filename=".md", file=BytesIO(b"Fake markdown content"))
+    text, title = service.read(file), service.get_filename_no_ext(file)
+
+    assert text == "Fake markdown content"
+    with pytest.raises(EmptyContentError):
+        Content(title)
