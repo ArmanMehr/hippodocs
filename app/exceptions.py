@@ -127,6 +127,10 @@ class MissingFilename(ValidationError):
     error_code = "missing_filename"
 
 
+class EmptyContent(ValidationError):
+    error_code = "empty_content_error"
+
+
 class UnsupportedDocument(ClientError):
     status_code = 422
     error_code = "unsupported_document_content"

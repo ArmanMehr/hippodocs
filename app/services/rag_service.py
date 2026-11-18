@@ -4,9 +4,16 @@ import structlog
 from langfuse import observe
 
 from app.adapters.file_reader import FileReader, FileReaderRegistry
-from app.domain.models import Content, Document, DocumentStatus, Workspace
+from app.domain.models import (
+    Content,
+    Document,
+    DocumentStatus,
+    EmptyContentError,
+    Workspace,
+)
 from app.exceptions import (
     DocumentNotFound,
+    EmptyContent,
     ServerError,
     UnsupportedDocument,
     WorkspaceNotFound,
@@ -65,9 +72,7 @@ class WorkspaceService:
     def list_workspaces(self, skip: int, limit: int) -> tuple[list[Workspace], int]:
         return self.get_workspaces(skip=skip, limit=limit)
 
-    def new_document(
-        self, workspace_id: int, title: str | None, text: str
-    ) -> int | None:
+    def new_document(self, workspace_id: int, title: str, text: str) -> int | None:
         with self.uow:
             workspace = self.uow.workspaces.get(workspace_id)
             if workspace is None:
@@ -131,14 +136,16 @@ class DocumentIngestionService:
     def add_document(
         self, text: str, workspace_id: int, title: str
     ) -> tuple[int, str, str]:
-        content = Content(text)
+        document_content, title_content = self._to_content(text, title)
         with self.uow:
             workspace = self._ensure_workspace(workspace_id)
-            document = self._check_existing_document(workspace_id, content.sha256)
+            document = self._check_existing_document(
+                workspace_id, document_content.sha256
+            )
 
             if not document:
-                content_valid = self.validator.validate(content)
-                title_valid = self.validator.validate(Content(title)).value
+                content_valid = self.validator.validate(document_content)
+                title_valid = self.validator.validate(title_content).value
 
                 document = Document(
                     content=content_valid,
@@ -152,18 +159,19 @@ class DocumentIngestionService:
                 self.uow.documents.add_content_hash(
                     workspace_id,
                     saved_document_id,
-                    content.sha256,
+                    document_content.sha256,
                 )
                 self.uow.commit()
             else:
                 logger.debug(f"Document already exists. The status: {document.status}")
-                content = document.content
+                content_valid = document.content
+                title_valid = document.title
 
             document_id = document.document_id  # type: ignore[attr-defined]
             _ = document.workspace.workspace_id  # type: ignore[attr-defined]
 
         self._ingest_document(document)
-        return document_id, title, content_valid.value
+        return document_id, title_valid, content_valid.value
 
     def retry_ingestion_in_workspace(self, workspace_id: int) -> None:
         with self.uow:
@@ -249,6 +257,21 @@ class DocumentIngestionService:
         return self.uow.documents.get_identical_document_in_workspace(
             workspace_id=workspace_id, content_hash=content_hash
         )
+
+    def _to_content(self, text: str, title: str):
+        try:
+            document_content = Content(text)
+        except EmptyContentError:
+            raise EmptyContent("Document content cannot be empty or whitespace")
+
+        try:
+            title_content = Content(title)
+        except EmptyContentError:
+            raise EmptyContent(
+                "Document title or file name cannot be empty or whitespace"
+            )
+
+        return document_content, title_content
 
 
 class RagService:

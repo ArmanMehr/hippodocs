@@ -8,10 +8,8 @@ from presidio_anonymizer.entities.engine.recognizer_result import (
     RecognizerResult as AnonymizerRecognizerResult,
 )
 
-from app.domain.models import Content
-from app.exceptions import (
-    SuspiciousInputError,
-)
+from app.domain.models import Content, EmptyContentError
+from app.exceptions import EmptyContent, SuspiciousInputError
 from app.observability import observe
 
 logger = structlog.get_logger(__name__)
@@ -125,7 +123,10 @@ class LocalPresidioInputValidator:
     def validate(self, content: Content) -> Content:
         sanitized = self.input_sanitizer.sanitize(content.value)
         redacted = self.pii_redactor.redact(sanitized)
-        return Content(redacted)
+        try:
+            return Content(redacted)
+        except EmptyContentError:
+            raise EmptyContent()
 
 
 class LocalPresidioOutputValidator:

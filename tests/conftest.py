@@ -81,7 +81,7 @@ def seed_document(uow: UnitOfWork, text: str) -> int:
     with uow:
         workspace = Workspace()
         uow.workspaces.add(workspace)
-        document = Document(content=Content(text), workspace=workspace)
+        document = Document(content=Content(text), workspace=workspace, title="")
         uow.documents.add(document)
         uow.commit()
         return document.document_id  # type: ignore[attr-defined]

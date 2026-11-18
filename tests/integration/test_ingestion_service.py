@@ -1,6 +1,7 @@
 import pytest
 
 from app.domain.models import Chunk
+from app.exceptions import EmptyContent
 from app.services.rag_service import (
     DocumentIngestionService,
     WorkspaceNotFound,
@@ -89,3 +90,12 @@ def test_saved_chunks_after_splitting(uow: UnitOfWork):
     for chunk in chunks:
         assert chunk.has_embedding()
         assert chunk.embedding_vector == [0.1, 0.1]
+
+
+def test_empty_document_raises_empty_content_exception(uow: UnitOfWork):
+    workspace_id = seed_workspace(uow)
+
+    with pytest.raises(EmptyContent):
+        get_ingestion_service(uow).add_document(
+            text="  ", workspace_id=workspace_id, title="Title"
+        )

@@ -46,7 +46,7 @@ class DocumentStatus(str, Enum):
 class Document:
     content: Content
     workspace: Workspace
-    title: str | None = None
+    title: str
     status: DocumentStatus = DocumentStatus.PENDING
 
     def is_done(self) -> bool:

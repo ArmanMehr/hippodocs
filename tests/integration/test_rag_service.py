@@ -39,7 +39,7 @@ def seed_workspace_with_chunks(uow: UnitOfWork, n_chunks: int = 2) -> int:
         workspace = uow.workspaces.get(workspace_id)
         assert workspace is not None
 
-        document = Document(content=Content("doc body"), workspace=workspace)
+        document = Document(content=Content("doc body"), workspace=workspace, title="")
         uow.documents.add(document)
         uow.chunks.save_all(
             [
