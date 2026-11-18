@@ -21,7 +21,8 @@ from app.exceptions import (
     WorkspaceNotFound,
 )
 from app.services.ports import (
-    InputValidator,
+    InputDocumentValidator,
+    InputQueryValidator,
     LLMChat,
     OutputValidator,
     PromptTemplate,
@@ -144,12 +145,12 @@ class DocumentIngestionService:
         uow: UnitOfWork,
         splitter: TextSplitter,
         embedder: TextEmbedder,
-        input_validator: InputValidator,
+        document_validator: InputDocumentValidator,
     ) -> None:
         self.uow = uow
         self.splitter = splitter
         self.embedder = embedder
-        self.validator = input_validator
+        self.document_validator = document_validator
 
     def add_document(
         self, text: str, workspace_id: int, title: str
@@ -162,8 +163,8 @@ class DocumentIngestionService:
             )
 
             if not document:
-                content_valid = self.validator.validate(document_content)
-                title_valid = self.validator.validate(title_content).value
+                content_valid = self.document_validator.validate(document_content)
+                title_valid = self.document_validator.validate(title_content).value
 
                 document = Document(
                     content=content_valid,
@@ -300,7 +301,7 @@ class RagService:
         llm: LLMChat,
         top_k: int,
         chat_prompt: PromptTemplate,
-        input_validator: InputValidator,
+        query_validator: InputQueryValidator,
         output_validator: OutputValidator,
     ) -> None:
         self.uow = uow
@@ -308,7 +309,7 @@ class RagService:
         self.llm = llm
         self.top_k = top_k
         self.chat_prompt = chat_prompt
-        self.input_validator = input_validator
+        self.query_validator = query_validator
         self.output_validator = output_validator
 
     def _ensure_workspace(self, workspace_id: int) -> None:
@@ -325,7 +326,7 @@ class RagService:
     )
     def query(self, workspace_id: int, query_text: str) -> str:
         self._ensure_workspace(workspace_id)
-        query_content = self.input_validator.validate(Content(query_text))
+        query_content = self.query_validator.validate(Content(query_text))
         chunks_view = self.retriever.retrieve_in_workspace(
             workspace_id=workspace_id, query=query_content, top_k=self.top_k
         )

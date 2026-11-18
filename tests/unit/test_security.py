@@ -4,16 +4,24 @@ import pytest
 from pytest_mock import MockerFixture, MockType
 
 from app.adapters.security import (
-    LocalPresidioInputValidator,
+    ControlCharacterStripper,
+    LocalPresidioDocumentValidator,
     LocalPresidioOutputValidator,
+    LocalPresidioPIIDetector,
     LocalPresidioPIIRedactor,
+    LocalPresidioQueryValidator,
     RegexSanitizer,
+    RegexSecretDetector,
 )
 from app.domain.models import Content
 from app.exceptions import SuspiciousInputError
 
 RedactorFixture = tuple[LocalPresidioPIIRedactor, MockType, MockType]
-OutputValidatorFixture = tuple[LocalPresidioOutputValidator, MockType]
+OutputValidatorFixture = tuple[LocalPresidioOutputValidator, MockType, MockType]
+
+
+def _identity(text: str) -> str:
+    return text
 
 
 def test_regex_sanitizer_detects_common_injection_variants() -> None:
@@ -96,24 +104,54 @@ def test_presidio_pii_redactor_handles_no_detected_pii(
     mock_anonymizer.anonymize.assert_called_once()
 
 
-def test_input_validator_sanitizes_then_redacts(mocker: MockerFixture) -> None:
+def test_query_validator_sanitizes_then_redacts(mocker: MockerFixture) -> None:
     sanitizer = mocker.Mock()
     sanitizer.sanitize.return_value = "sanitized input"
     redactor = mocker.Mock()
     redactor.redact.return_value = "redacted input"
-    validator = LocalPresidioInputValidator(sanitizer, redactor)
+    validator = LocalPresidioQueryValidator(sanitizer, redactor)
 
     assert validator.validate(Content("raw input")) == Content("redacted input")
     sanitizer.sanitize.assert_called_once_with("raw input")
     redactor.redact.assert_called_once_with("sanitized input")
 
 
+def test_document_validator_strips_controls_and_preserves_formatting(
+    mocker: MockerFixture,
+) -> None:
+    stripper = ControlCharacterStripper()
+    redactor = mocker.Mock()
+    redactor.redact.side_effect = _identity
+    validator = LocalPresidioDocumentValidator(stripper, redactor)
+    document = Content("# Title\x00\n\n| A | B |\n| --- | --- |\n| x | y |\x01")
+
+    assert validator.validate(document) == Content(
+        "# Title\n\n| A | B |\n| --- | --- |\n| x | y |"
+    )
+    redactor.redact.assert_called_once_with(
+        "# Title\n\n| A | B |\n| --- | --- |\n| x | y |"
+    )
+
+
+def test_document_validator_does_not_reject_prompt_engineering_text(
+    mocker: MockerFixture,
+) -> None:
+    redactor = mocker.Mock()
+    redactor.redact.side_effect = _identity
+    validator = LocalPresidioDocumentValidator(ControlCharacterStripper(), redactor)
+    document = Content("A guide explaining the system prompt.\n\nNext paragraph.")
+
+    assert validator.validate(document) == document
+
+
 @pytest.fixture
 def mocked_validator(mocker: MockerFixture) -> OutputValidatorFixture:
     mock_analyzer_cls = mocker.patch("app.adapters.security.AnalyzerEngine")
     mock_analyzer = mock_analyzer_cls.return_value
-    validator = LocalPresidioOutputValidator()
-    return validator, mock_analyzer
+    secret_detector = mocker.Mock(spec=RegexSecretDetector)
+    pii_detector = LocalPresidioPIIDetector()
+    validator = LocalPresidioOutputValidator(secret_detector, pii_detector)
+    return validator, secret_detector, mock_analyzer
 
 
 @pytest.mark.parametrize(
@@ -130,7 +168,8 @@ def mocked_validator(mocker: MockerFixture) -> OutputValidatorFixture:
 def test_output_validator_rejects_secret_patterns(
     mocked_validator: OutputValidatorFixture, answer: str
 ) -> None:
-    validator, mock_analyzer = mocked_validator
+    validator, secret_detector, mock_analyzer = mocked_validator
+    secret_detector.detect.return_value = ["secret"]
     assert validator.validate(Content(answer)) == Content("[CONTENT BLOCKED]")
     mock_analyzer.analyze.assert_not_called()
 
@@ -138,7 +177,8 @@ def test_output_validator_rejects_secret_patterns(
 def test_output_validator_blocks_detected_pii(
     mocked_validator: OutputValidatorFixture, mocker: MockerFixture
 ) -> None:
-    validator, mock_analyzer = mocked_validator
+    validator, secret_detector, mock_analyzer = mocked_validator
+    secret_detector.detect.return_value = []  # type: ignore[assignment]
     answer = "Contact jane@example.com"
     mock_analyzer.analyze.return_value = [mocker.MagicMock(entity_type="EMAIL_ADDRESS")]
 
@@ -146,14 +186,15 @@ def test_output_validator_blocks_detected_pii(
     mock_analyzer.analyze.assert_called_once_with(
         text=answer,
         language="en",
-        entities=LocalPresidioOutputValidator.PII_ENTITIES,
+        entities=LocalPresidioPIIDetector.PII_ENTITIES,
     )
 
 
 def test_output_validator_allows_clean_output(
     mocked_validator: OutputValidatorFixture,
 ) -> None:
-    validator, mock_analyzer = mocked_validator
+    validator, secret_detector, mock_analyzer = mocked_validator
+    secret_detector.detect.return_value = []  # type: ignore[assignment]
     answer = Content("The deployment completed successfully.")
     no_results: list[Any] = []
     mock_analyzer.analyze.return_value = no_results
@@ -164,7 +205,8 @@ def test_output_validator_allows_clean_output(
 def test_output_validator_checks_secrets_before_pii(
     mocked_validator: OutputValidatorFixture,
 ) -> None:
-    validator, mock_analyzer = mocked_validator
+    validator, secret_detector, mock_analyzer = mocked_validator
+    secret_detector.detect.return_value = ["password_disclosure"]
     assert validator.validate(
         Content("password is sk-abcdefghijklmnopqrstuvwxyz")
     ) == Content("[CONTENT BLOCKED]")

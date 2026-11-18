@@ -66,6 +66,17 @@ class RegexSanitizer:
         return text
 
 
+class ControlCharacterStripper:
+    @observe(
+        name="document-control-character-strip",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
+    def strip(self, text: str) -> str:
+        return re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
+
+
 class LocalPresidioPIIRedactor:
     PII_ENTITIES: ClassVar[list[str]] = [
         "EMAIL_ADDRESS",
@@ -105,7 +116,56 @@ class LocalPresidioPIIRedactor:
         return anonymized.text
 
 
-class LocalPresidioInputValidator:
+class LocalPresidioPIIDetector:
+    PII_ENTITIES: ClassVar[list[str]] = [
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "CREDIT_CARD",
+    ]
+
+    def __init__(self) -> None:
+        self._analyzer = AnalyzerEngine()
+
+    @observe(
+        name="output-pii-detect",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
+    def detect(self, text: str) -> list[str]:
+        results = self._analyzer.analyze(
+            text=text, language="en", entities=self.PII_ENTITIES
+        )
+        return sorted({result.entity_type for result in results})
+
+
+class RegexSecretDetector:
+    SECRET_PATTERNS: ClassVar[list[tuple[str, str]]] = [
+        ("openai_api_key", r"sk-[A-Za-z0-9]{20,}"),
+        ("aws_access_key", r"AKIA[0-9A-Z]{16}"),
+        ("private_key", r"-----BEGIN .* PRIVATE KEY-----"),
+        ("attack_instructions", r"here('s| is) (how|the way) to (hack|steal|attack)"),
+        ("password_disclosure", r"password is"),
+        ("api_key_disclosure", r"api[_\s]?(key|token|secret)"),
+    ]
+
+    def __init__(self) -> None:
+        self._secret_patterns = [
+            (name, re.compile(pattern, re.IGNORECASE))
+            for name, pattern in self.SECRET_PATTERNS
+        ]
+
+    @observe(
+        name="output-secret-detect",
+        as_type="guardrail",
+        capture_input=False,
+        capture_output=False,
+    )
+    def detect(self, text: str) -> list[str]:
+        return [name for name, pattern in self._secret_patterns if pattern.search(text)]
+
+
+class LocalPresidioQueryValidator:
     def __init__(
         self,
         input_sanitizer: RegexSanitizer | None = None,
@@ -129,28 +189,40 @@ class LocalPresidioInputValidator:
             raise EmptyContent()
 
 
+class LocalPresidioDocumentValidator:
+    def __init__(
+        self,
+        control_character_stripper: ControlCharacterStripper | None = None,
+        pii_redactor: LocalPresidioPIIRedactor | None = None,
+    ) -> None:
+        self.control_character_stripper = (
+            control_character_stripper or ControlCharacterStripper()
+        )
+        self.pii_redactor = pii_redactor or LocalPresidioPIIRedactor()
+
+    @observe(
+        name="document-input-validator",
+        as_type="chain",
+        capture_input=False,
+        capture_output=True,
+    )
+    def validate(self, content: Content) -> Content:
+        clean_text = self.control_character_stripper.strip(content.value)
+        redacted = self.pii_redactor.redact(clean_text)
+        try:
+            return Content(redacted)
+        except EmptyContentError:
+            raise EmptyContent()
+
+
 class LocalPresidioOutputValidator:
-    SECRET_PATTERNS: ClassVar[list[tuple[str, str]]] = [
-        ("openai_api_key", r"sk-[A-Za-z0-9]{20,}"),
-        ("aws_access_key", r"AKIA[0-9A-Z]{16}"),
-        ("private_key", r"-----BEGIN .* PRIVATE KEY-----"),
-        ("attack_instructions", r"here('s| is) (how|the way) to (hack|steal|attack)"),
-        ("password_disclosure", r"password is"),
-        ("api_key_disclosure", r"api[_\s]?(key|token|secret)"),
-    ]
-
-    PII_ENTITIES: ClassVar[list[str]] = [
-        "EMAIL_ADDRESS",
-        "PHONE_NUMBER",
-        "CREDIT_CARD",
-    ]
-
-    def __init__(self) -> None:
-        self._analyzer = AnalyzerEngine()
-        self._secret_patterns = [
-            (name, re.compile(pattern, re.IGNORECASE))
-            for name, pattern in self.SECRET_PATTERNS
-        ]
+    def __init__(
+        self,
+        secret_detector: RegexSecretDetector | None = None,
+        pii_detector: LocalPresidioPIIDetector | None = None,
+    ) -> None:
+        self.secret_detector = secret_detector or RegexSecretDetector()
+        self.pii_detector = pii_detector or LocalPresidioPIIDetector()
 
     @observe(
         name="output-validator",
@@ -159,11 +231,8 @@ class LocalPresidioOutputValidator:
         capture_output=True,
     )
     def validate(self, content: Content) -> Content:
-        suspicious_patterns = []
         text = content.value
-        for name, pattern in self._secret_patterns:
-            if pattern.search(text):
-                suspicious_patterns.append(name)
+        suspicious_patterns = self.secret_detector.detect(text)
 
         if suspicious_patterns:
             logger.warning(
@@ -172,14 +241,12 @@ class LocalPresidioOutputValidator:
             )
             return Content("[CONTENT BLOCKED]")
 
-        results = self._analyzer.analyze(
-            text=text, language="en", entities=self.PII_ENTITIES
-        )
+        entity_types = self.pii_detector.detect(text)
 
-        if results:
+        if entity_types:
             logger.warning(
                 "pii_detected_in_model_output",
-                entity_types=sorted({result.entity_type for result in results}),
+                entity_types=entity_types,
             )
             return Content("[CONTENT BLOCKED]")
 

@@ -34,7 +34,11 @@ class PromptTemplate(Protocol):
     def format(self, **kwargs: str) -> Content: ...
 
 
-class InputValidator(Protocol):
+class InputQueryValidator(Protocol):
+    def validate(self, content: Content) -> Content: ...
+
+
+class InputDocumentValidator(Protocol):
     def validate(self, content: Content) -> Content: ...
 
 

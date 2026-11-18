@@ -8,8 +8,9 @@ from app.adapters.llm import (
 )
 from app.adapters.retriever import BM25Retriever, HybridRetriever, PgVectorRetriever
 from app.adapters.security import (
-    LocalPresidioInputValidator,
+    LocalPresidioDocumentValidator,
     LocalPresidioOutputValidator,
+    LocalPresidioQueryValidator,
 )
 from app.adapters.text_embedder import (
     LangchainEmbedder,
@@ -22,7 +23,8 @@ from app.configs import get_settings
 from app.exceptions import UnsupportedProvider
 from app.observability import create_langchain_callback_handler, get_langfuse_client
 from app.services.ports import (
-    InputValidator,
+    InputDocumentValidator,
+    InputQueryValidator,
     LLMChat,
     OutputValidator,
     Retriever,
@@ -137,8 +139,13 @@ def create_file_reader() -> FileReaderService:
 
 
 @cache
-def create_input_validator() -> InputValidator:
-    return LocalPresidioInputValidator()
+def create_query_validator() -> InputQueryValidator:
+    return LocalPresidioQueryValidator()
+
+
+@cache
+def create_document_validator() -> InputDocumentValidator:
+    return LocalPresidioDocumentValidator()
 
 
 @cache
@@ -159,7 +166,7 @@ def create_ingestion_service(uow: UnitOfWork | None = None) -> DocumentIngestion
         uow=uow or create_uow(),
         splitter=create_text_splitter(),
         embedder=create_text_embedder(),
-        input_validator=create_input_validator(),
+        document_validator=create_document_validator(),
     )
 
 
@@ -194,6 +201,6 @@ def create_rag_service(
         llm=llm or create_llm_chat(),
         top_k=s.TOP_K_HYBRID,
         chat_prompt=LangchainPromptTemplate(s.RAG_PROMPT_TEMPLATE),
-        input_validator=create_input_validator(),
+        query_validator=create_query_validator(),
         output_validator=create_output_validator(),
     )

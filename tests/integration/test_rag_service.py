@@ -28,7 +28,7 @@ def rag_service(uow: FakeUnitOfWork, llm: FakeLLMChat) -> RagService:
         llm=llm,
         top_k=2,
         chat_prompt=LangchainPromptTemplate(get_settings().RAG_PROMPT_TEMPLATE),
-        input_validator=FakeInputValidator(),
+        query_validator=FakeInputValidator(),
         output_validator=FakeOutputValidator(),
     )
 

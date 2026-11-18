@@ -21,7 +21,7 @@ def get_ingestion_service(uow: UnitOfWork) -> DocumentIngestionService:
         uow=uow,
         splitter=FakeSplitter(),
         embedder=FakeEmbedder(),
-        input_validator=FakeInputValidator(),
+        document_validator=FakeInputValidator(),
     )
 
 
