@@ -321,7 +321,7 @@ class RagService:
     @observe(
         name="rag-query",
         as_type="chain",
-        capture_input=True,
+        capture_input=False,
         capture_output=True,
     )
     def query(self, workspace_id: int, query_text: str) -> str:
