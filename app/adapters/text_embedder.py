@@ -29,8 +29,20 @@ class LangChainEmbedderBase:
     _langfuse_client: Langfuse | None = None
     model_id: str
 
-    def __init__(self, langfuse_client: Langfuse | None = None) -> None:
+    def __init__(
+        self,
+        langfuse_client: Langfuse | None = None,
+        max_batch_size: int | None = None,
+    ) -> None:
         self._langfuse_client = langfuse_client
+        self.max_batch_size = (
+            max_batch_size
+            if max_batch_size is not None
+            else get_settings().EMBEDDING_MAX_BATCH_SIZE
+        )
+
+        if self.max_batch_size <= 0:
+            raise ValueError("max_batch_size must be positive")
 
     def _trace_embedding(
         self,
@@ -54,21 +66,27 @@ class LangChainEmbedderBase:
         capture_output=False,
     )
     def embed_texts(self, texts: Sequence[str]) -> list[Embedding]:
-        try:
-            vectors = self._embedder.embed_documents(texts=list(texts))
-            return [
-                Embedding(vector=tuple(vector), model_id=self.model_id)
-                for vector in vectors
-            ]
+        batches = self._batch_texts(texts)
+        embeddings = []
+        for batch in batches:
+            try:
+                vectors = self._embedder.embed_documents(texts=batch)
+            except OpenAIRateLimitError as e:
+                raise RateLimitError() from e
 
-        except OpenAIRateLimitError as e:
-            raise RateLimitError() from e
+            except APITimeoutError as e:
+                raise EmbeddingTimeoutError() from e
 
-        except APITimeoutError as e:
-            raise EmbeddingTimeoutError() from e
+            except Exception as e:
+                raise EmbeddingError("External embedding API error") from e
 
-        except Exception as e:
-            raise EmbeddingError("External embedding API error") from e
+            embeddings.extend(
+                [
+                    Embedding(vector=tuple(vector), model_id=self.model_id)
+                    for vector in vectors
+                ]
+            )
+        return embeddings
 
     @observe(
         name="query-embedding",
@@ -89,6 +107,15 @@ class LangChainEmbedderBase:
         except Exception as e:
             raise EmbeddingError() from e
 
+    def _batch_texts(self, texts: Sequence[str]) -> list[list[str]]:
+        num_chunks = len(texts)
+        if num_chunks == 0:
+            return []
+        batched = []
+        for i in range(0, num_chunks, self.max_batch_size):
+            batched.append(list(texts[i : i + self.max_batch_size]))
+        return batched
+
 
 class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
     def __init__(
@@ -98,8 +125,9 @@ class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
         api_key: str,
         dimensions: int,
         langfuse_client: Langfuse | None = None,
+        max_batch_size: int | None = None,
     ) -> None:
-        super().__init__(langfuse_client=langfuse_client)
+        super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
 
         self._embedder = OpenAIEmbeddings(
             model=model_id,
@@ -107,6 +135,7 @@ class LangChainOpenAITextEmbedder(LangChainEmbedderBase):
             api_key=SecretStr(api_key),
             dimensions=dimensions,
             check_embedding_ctx_length=False,
+            chunk_size=self.max_batch_size,
         )
 
         self.model_id = model_id
@@ -123,11 +152,12 @@ class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
         base_url: str,
         dimensions: int,
         langfuse_client: Langfuse | None = None,
+        max_batch_size: int | None = None,
     ) -> None:
-        super().__init__(langfuse_client=langfuse_client)
+        super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
         self._embedder = OllamaEmbeddings(
             model=model_id,
-            base_url=base_url or "http://localhost:11437",
+            base_url=base_url or "http://localhost:11434",
             dimensions=dimensions,
         )
         self.model_id = model_id
@@ -144,8 +174,9 @@ class LangChainInMemoryCacheBackedEmbedder(LangChainEmbedderBase):
         self,
         langchain_embedder: LangchainEmbedder,
         langfuse_client: Langfuse | None = None,
+        max_batch_size: int | None = None,
     ) -> None:
-        super().__init__(langfuse_client=langfuse_client)
+        super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
 
         cache_store = InMemoryStore()
 
@@ -154,6 +185,7 @@ class LangChainInMemoryCacheBackedEmbedder(LangChainEmbedderBase):
             document_embedding_cache=cache_store,
             query_embedding_cache=True,
             key_encoder=self._sha256_encoder,
+            batch_size=self.max_batch_size,
         )
         self.model_id = langchain_embedder.model_id
 

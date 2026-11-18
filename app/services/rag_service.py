@@ -111,7 +111,9 @@ class FileReaderService:
         self, registry: FileReaderRegistry, max_size: int | None = None
     ) -> None:
         self.registry = registry
-        self.max_size = max_size or get_settings().MAX_FILESIZE
+        self.max_size = (
+            max_size if max_size is not None else get_settings().MAX_FILESIZE
+        )
 
     def read(self, file: UploadFile) -> str:
         self._check_file_size(file)

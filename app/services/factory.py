@@ -123,7 +123,7 @@ def create_file_reader_registry() -> FileReaderRegistry:
 @cache
 def create_file_reader() -> FileReaderService:
     registry = create_file_reader_registry()
-    return FileReaderService(registry)
+    return FileReaderService(registry=registry)
 
 
 @cache

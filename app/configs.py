@@ -64,6 +64,7 @@ class Configs(BaseSettings):
     EMBEDDING_PROVIDER: SUPPORTED_EMBEDDING_PROVIDERS = "openai"
     EMBEDDING_BASE_URL: str = OPENAI_BASE_URL
     EMBEDDING_MODEL: str = ""
+    EMBEDDING_MAX_BATCH_SIZE: int = 256
     DIMENSIONS: int = 384
 
     # LLM

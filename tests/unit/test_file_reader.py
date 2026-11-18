@@ -7,7 +7,8 @@ from pytest_mock import MockerFixture
 
 from app.adapters.file_reader import FileReaderRegistry, MarkdownReader, PdfReader
 from app.domain.models import Content, EmptyContentError
-from app.exceptions import NoExtractableText, UnsupportedFileType
+from app.exceptions import MissingFilename, NoExtractableText, UnsupportedFileType
+from app.services.factory import create_file_reader
 from app.services.rag_service import FileReaderService
 
 
@@ -110,3 +111,9 @@ def test_empty_content_error_for_title_in_nameless_file():
     assert text == "Fake markdown content"
     with pytest.raises(EmptyContentError):
         Content(title)
+
+
+def test_file_reader_rejects_missing_filename() -> None:
+    file_reader = create_file_reader()
+    with pytest.raises(MissingFilename):
+        file_reader.read(UploadFile(file=BytesIO(b"content"), filename=None))
