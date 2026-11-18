@@ -92,7 +92,7 @@ class Configs(BaseSettings):
     RAG_PROMPT_TEMPLATE: str = _DEFAULT_RAG_PROMPT
 
     # API
-    MAX_FILESIZE: int = 10 * 1024 * 1024
+    MAX_FILESIZE: int = 5 * 1024 * 1024
 
     # Others
     CACHE_NAMESPACE: str = "rag_cache"
