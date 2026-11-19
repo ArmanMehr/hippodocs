@@ -13,8 +13,6 @@ from app.adapters.security import (
     LocalPresidioQueryValidator,
 )
 from app.adapters.text_embedder import (
-    LangchainEmbedder,
-    LangChainInMemoryCacheBackedEmbedder,
     LangChainOllamaTextEmbedder,
     LangChainOpenAITextEmbedder,
 )
@@ -42,11 +40,11 @@ from app.services.uow import SQLAlchemyUnitOfWork, UnitOfWork
 
 def _create_langchain_embedder(
     provider: str, model_id: str, base_url: str, dimensions: int
-) -> LangchainEmbedder:
+) -> TextEmbedder:
     langfuse_client = get_langfuse_client()
     match provider:
         case "openai":
-            embedder = LangChainOpenAITextEmbedder(
+            return LangChainOpenAITextEmbedder(
                 model_id=model_id,
                 base_url=base_url,
                 api_key=get_settings().OPENAI_API_KEY,
@@ -54,7 +52,7 @@ def _create_langchain_embedder(
                 langfuse_client=langfuse_client,
             )
         case "ollama":
-            embedder = LangChainOllamaTextEmbedder(
+            return LangChainOllamaTextEmbedder(
                 model_id=model_id,
                 base_url=base_url,
                 dimensions=dimensions,
@@ -62,10 +60,6 @@ def _create_langchain_embedder(
             )
         case _:
             raise UnsupportedProvider()
-
-    return LangChainInMemoryCacheBackedEmbedder(
-        embedder, langfuse_client=langfuse_client
-    )
 
 
 def _create_llm(

@@ -83,7 +83,7 @@ class Chunk:
     embedding_model_id: str | None = None
 
     def has_embedding(self) -> bool:
-        return self.embedding is not None
+        return self.embedding_vector is not None
 
     @property
     def embedding(self) -> Embedding | None:

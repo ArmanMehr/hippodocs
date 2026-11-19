@@ -1,4 +1,6 @@
 from app.adapters.text_splitter import LangChainRecursiveTextSplitter
+
+
 def _make_splitter(
     chunk_size: int = 100, chunk_overlap: int = 0
 ) -> LangChainRecursiveTextSplitter:
@@ -9,7 +11,9 @@ def _make_splitter(
 
 def test_splits_into_chunks():
     splitter = _make_splitter(chunk_size=10)
-    result = splitter.split_text("Hello world this is a test", document_id=7, workspace_id=3)
+    result = splitter.split_text(
+        "Hello world this is a test", document_id=7, workspace_id=3
+    )
 
     assert all(len(c.text) <= 10 for c in result)
     assert all(c.document_id == 7 for c in result)

@@ -93,9 +93,6 @@ class Configs(BaseSettings):
     # API
     MAX_FILESIZE: int = 5 * 1024 * 1024
 
-    # Others
-    CACHE_NAMESPACE: str = "rag_cache"
-
 
 @lru_cache
 def get_settings() -> Configs:

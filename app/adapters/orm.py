@@ -14,7 +14,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.orm import composite, registry, relationship
+from sqlalchemy.orm import registry, relationship
 
 from app.configs import get_settings
 from app.domain.models import (
@@ -22,7 +22,6 @@ from app.domain.models import (
     Content,
     Document,
     DocumentStatus,
-    Embedding,
     Workspace,
 )
 
@@ -163,17 +162,7 @@ def start_mappers() -> None:
             "workspace": relationship(Workspace, lazy="select"),
         },
     )
-    mapper_registry.map_imperatively(
-        Chunk,
-        chunks_table,
-        properties={
-            "embedding": composite(
-                Embedding,
-                chunks_table.c.embedding_vector,
-                chunks_table.c.embedding_model_id,
-            ),
-        },
-    )
+    mapper_registry.map_imperatively(Chunk, chunks_table)
 
 
 def clear_mappers() -> None:

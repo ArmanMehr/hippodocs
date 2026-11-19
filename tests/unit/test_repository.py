@@ -94,9 +94,10 @@ def test_workspace_delete_removes(
     workspace_repo: WorkspaceRepository, session: Session
 ):
     ws = add_workspace(workspace_repo, session, name="x")
-    workspace_repo.delete(ws.workspace_id)  # type: ignore
+    workspace_id = ws.workspace_id
+    workspace_repo.delete(workspace_id)  # type: ignore
     session.commit()
-    assert workspace_repo.get(ws.workspace_id) is None  # type: ignore
+    assert workspace_repo.get(workspace_id) is None  # type: ignore
 
 
 def test_document_add_assigns_id(
@@ -188,9 +189,10 @@ def test_document_list_by_workspace_excludes_others(
 def test_document_delete_removes(
     document_repo: DocumentRepository, session: Session, document: Document
 ):
-    document_repo.delete(document.document_id)  # type: ignore
+    document_id = document.document_id
+    document_repo.delete(document_id)  # type: ignore
     session.commit()
-    assert document_repo.get(document.document_id) is None  # type: ignore
+    assert document_repo.get(document_id) is None  # type: ignore
 
 
 def test_delete_workspace_cascades_documents(
@@ -200,10 +202,11 @@ def test_delete_workspace_cascades_documents(
     workspace: Workspace,
 ):
     add_document(document_repo, session, workspace, title="child")
-    workspace_repo.delete(workspace.workspace_id)  # type: ignore
+    workspace_id = workspace.workspace_id
+    workspace_repo.delete(workspace_id)  # type: ignore
     session.commit()
     results, total = document_repo.list_by_workspace(
-        workspace.workspace_id,  # type: ignore
+        workspace_id,  # type: ignore
         skip=0,
         limit=100,
     )

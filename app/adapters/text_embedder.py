@@ -1,11 +1,8 @@
-import hashlib
 from collections.abc import Sequence
 from contextlib import AbstractContextManager, nullcontext
-from typing import Any, Protocol
+from typing import Any
 
 from langchain.embeddings import Embeddings as LangChainEmbeddings
-from langchain_classic.embeddings.cache import CacheBackedEmbeddings
-from langchain_core.stores import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from langfuse import Langfuse, observe
@@ -16,12 +13,6 @@ from app.adapters.llm import OpenAIRateLimitError
 from app.configs import get_settings
 from app.domain.models import Embedding
 from app.exceptions import EmbeddingError, EmbeddingTimeoutError, RateLimitError
-from app.services.ports import TextEmbedder
-
-
-class LangchainEmbedder(TextEmbedder, Protocol):
-    @property
-    def embedder(self) -> LangChainEmbeddings: ...
 
 
 class LangChainEmbedderBase:
@@ -168,38 +159,6 @@ class LangChainOllamaTextEmbedder(LangChainEmbedderBase):
             dimensions=dimensions,
         )
         self.model_id = model_id
-
-    @property
-    def embedder(self) -> LangChainEmbeddings:
-        return self._embedder
-
-
-# TODO: Add a cache hit/miss in the tracing
-# TODO: Will be replaced by Redis in the future.
-class LangChainInMemoryCacheBackedEmbedder(LangChainEmbedderBase):
-    def __init__(
-        self,
-        langchain_embedder: LangchainEmbedder,
-        langfuse_client: Langfuse | None = None,
-        max_batch_size: int | None = None,
-    ) -> None:
-        super().__init__(langfuse_client=langfuse_client, max_batch_size=max_batch_size)
-
-        cache_store = InMemoryStore()
-
-        self._embedder = CacheBackedEmbeddings.from_bytes_store(
-            underlying_embeddings=langchain_embedder.embedder,
-            document_embedding_cache=cache_store,
-            query_embedding_cache=True,
-            key_encoder=self._sha256_encoder,
-            batch_size=self.max_batch_size,
-        )
-        self.model_id = langchain_embedder.model_id
-
-    @staticmethod
-    def _sha256_encoder(key: str) -> str:
-        namespaced_key = f"{get_settings().CACHE_NAMESPACE}:{key}"
-        return hashlib.sha256(namespaced_key.encode("utf-8")).hexdigest()
 
     @property
     def embedder(self) -> LangChainEmbeddings:
