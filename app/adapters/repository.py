@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from sqlalchemy import and_, func, insert, select, update
+from sqlalchemy import and_, delete, func, insert, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import bindparam
 
@@ -95,9 +95,11 @@ class SQLAlchemyWorkspaceRepository:
             setattr(ws, attr, getattr(new_workspace, attr))
 
     def delete(self, workspace_id: int) -> None:
-        ws = self.get(workspace_id)
-        if ws is not None:
-            self._session.delete(ws)
+        self._session.execute(
+            delete(workspaces_table).where(
+                workspaces_table.c.workspace_id == workspace_id
+            )
+        )
 
 
 class SQLAlchemyDocumentRepository:
@@ -176,9 +178,9 @@ class SQLAlchemyDocumentRepository:
         self._session.execute(stmt)
 
     def delete(self, document_id: int) -> None:
-        doc = self.get(document_id)
-        if doc is not None:
-            self._session.delete(doc)
+        self._session.execute(
+            delete(documents_table).where(documents_table.c.document_id == document_id)
+        )
 
 
 class SQLAlchemyChunkRepository:

@@ -1,13 +1,18 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.models import Chunk, Content, Document, DocumentStatus
-from app.exceptions import ConcurrentDocumentCreationError, EmptyContent
+from app.exceptions import (
+    ConcurrentDocumentCreationError,
+    EmptyContent,
+    UnsupportedDocument,
+)
 from app.services.rag_service import (
     DocumentIngestionService,
     WorkspaceNotFound,
 )
-from app.services.uow import UnitOfWork
+from app.services.uow import SQLAlchemyUnitOfWork, UnitOfWork
 from tests.conftest import (
     FakeEmbedder,
     FakeInputValidator,
@@ -146,6 +151,26 @@ def test_saved_chunks_after_splitting(uow: UnitOfWork):
     for chunk in chunks:
         assert chunk.has_embedding()
         assert chunk.embedding_vector == [0.1, 0.1]
+
+
+def test_empty_chunks_delete_document_and_hash_row(
+    session_factory: sessionmaker[Session],
+):
+    uow = SQLAlchemyUnitOfWork(session_factory)
+    workspace_id = seed_workspace(uow)
+    text = "..."
+
+    with pytest.raises(UnsupportedDocument):
+        get_ingestion_service(uow).add_document(text, workspace_id, "Title")
+
+    _, total = uow.documents.list_by_workspace(workspace_id, skip=0, limit=10)
+    content_hash = Content(text).sha256
+    with uow:
+        existing = uow.documents.get_identical_document_in_workspace(
+            workspace_id, content_hash
+        )
+    assert total == 0
+    assert existing is None
 
 
 def test_empty_document_raises_empty_content_exception(uow: UnitOfWork):

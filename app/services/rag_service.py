@@ -232,6 +232,9 @@ class DocumentIngestionService:
             raise
 
         if not chunks:
+            with self.uow:
+                self.uow.documents.delete(document_id)
+                self.uow.commit()
             raise UnsupportedDocument()
 
         with self.uow:
