@@ -1,6 +1,7 @@
 import structlog
 from fastapi import UploadFile
 from langfuse import observe
+from sqlalchemy.exc import IntegrityError
 
 from app import get_settings
 from app.adapters.file_reader import FileReader, FileReaderRegistry
@@ -12,6 +13,7 @@ from app.domain.models import (
     Workspace,
 )
 from app.exceptions import (
+    ConcurrentDocumentCreationError,
     DocumentNotFound,
     EmptyContent,
     FileTooLarge,
@@ -158,38 +160,37 @@ class DocumentIngestionService:
         document_content, title_content = self._to_content(text, title)
         with self.uow:
             workspace = self._ensure_workspace(workspace_id)
+            document_content_hash = document_content.sha256
+
+            ingest = False
             document = self._check_existing_document(
-                workspace_id, document_content.sha256
+                workspace_id, document_content_hash
             )
-
             if not document:
-                content_valid = self.document_validator.validate(document_content)
-                title_valid = self.document_validator.validate(title_content).value
-
-                document = Document(
-                    content=content_valid,
-                    workspace=workspace,
-                    title=title_valid,
-                )
-                self.uow.documents.add(document)
-                self.uow.flush()
-
-                saved_document_id = document.document_id  # type: ignore[attr-defined]
-                self.uow.documents.add_content_hash(
-                    workspace_id,
-                    saved_document_id,
-                    document_content.sha256,
-                )
-                self.uow.commit()
+                try:
+                    document = self._create_document(
+                        workspace, document_content, title_content
+                    )
+                    self.uow.commit()
+                    ingest = True
+                except IntegrityError:
+                    self.uow.rollback()
+                    document = self._check_existing_document(
+                        workspace_id, document_content_hash
+                    )
+                    if not document:
+                        raise ConcurrentDocumentCreationError()
             else:
                 logger.debug(f"Document already exists. The status: {document.status}")
-                content_valid = document.content
-                title_valid = document.title
 
+            content_valid = document.content
+            title_valid = document.title
             document_id = document.document_id  # type: ignore[attr-defined]
             _ = document.workspace.workspace_id  # type: ignore[attr-defined]
 
-        self._ingest_document(document)
+        if ingest:
+            self._ingest_document(document)
+
         return document_id, title_valid, content_valid.value
 
     def retry_ingestion_in_workspace(self, workspace_id: int) -> None:
@@ -264,6 +265,28 @@ class DocumentIngestionService:
             self.uow.documents.update_status(document_id, DocumentStatus.DONE)
             self.uow.commit()
         document.status = DocumentStatus.DONE
+        return document
+
+    def _create_document(
+        self, workspace: Workspace, document_content: Content, title_content: Content
+    ) -> Document:
+        content_valid = self.document_validator.validate(document_content)
+        title_valid = self.document_validator.validate(title_content).value
+
+        document = Document(
+            content=content_valid,
+            workspace=workspace,
+            title=title_valid,
+        )
+        self.uow.documents.add(document)
+        self.uow.flush()
+
+        saved_document_id = document.document_id  # type: ignore[attr-defined]
+        self.uow.documents.add_content_hash(
+            workspace.workspace_id,  # type: ignore[attr-defined]
+            saved_document_id,
+            document_content.sha256,
+        )
         return document
 
     def _ensure_workspace(self, workspace_id: int) -> Workspace:

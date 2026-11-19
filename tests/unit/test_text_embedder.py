@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import override
 
 from langchain_core.embeddings import Embeddings
 
@@ -11,10 +12,12 @@ class FakeLangChainEmbeddingProvider(Embeddings):
         self.calls: list[list[str]] = []
         self.query_calls = 0
 
+    @override
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(list(texts))
         return [[float(int(text[:4]))] for text in texts]
 
+    @override
     def embed_query(self, text: str) -> list[float]:
         self.query_calls += 1
         return [float(int(text[:4]))]

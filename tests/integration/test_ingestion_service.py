@@ -1,7 +1,8 @@
 import pytest
+from sqlalchemy.exc import IntegrityError
 
-from app.domain.models import Chunk
-from app.exceptions import EmptyContent
+from app.domain.models import Chunk, Content, Document, DocumentStatus
+from app.exceptions import ConcurrentDocumentCreationError, EmptyContent
 from app.services.rag_service import (
     DocumentIngestionService,
     WorkspaceNotFound,
@@ -35,6 +36,10 @@ def get_chunks(uow: UnitOfWork, document_id: int) -> list[Chunk]:
     return []
 
 
+def raise_insert_integrity_error(*args: object) -> None:
+    raise IntegrityError("insert", {}, Exception())
+
+
 def test_ingest_unknown_workspace_raises_error(uow: UnitOfWork):
     with pytest.raises(WorkspaceNotFound):
         get_ingestion_service(uow).add_document("Text", workspace_id=999, title="Title")
@@ -62,6 +67,57 @@ def test_add_document_reuses_existing_document_by_content(uow: UnitOfWork):
 
     assert first_id == second_id
     assert len(uow.documents._documents) == 1  # type: ignore[attr-defined]
+
+
+def test_concurrent_duplicate_upload_returns_winner_without_reingesting(
+    uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch
+):
+    workspace_id = seed_workspace(uow)
+    service = get_ingestion_service(uow)
+    workspace = uow.workspaces.get(workspace_id)
+
+    assert workspace is not None
+
+    winner = Document(
+        content=Content("Text1. Text2"), workspace=workspace, title="First"
+    )
+    with uow:
+        uow.documents.add(winner)
+        uow.flush()
+        uow.documents.add_content_hash(
+            workspace_id,
+            winner.document_id,  # type: ignore[attr-defined]
+            winner.content.sha256,  # type: ignore[attr-defined]
+        )
+        uow.commit()
+
+    # First lookup and find None (because of concurrency).
+    # After integrity error, it gets winner document
+    lookups = iter([None, winner])
+    monkeypatch.setattr(service, "_check_existing_document", lambda *_: next(lookups))  # type: ignore
+    monkeypatch.setattr(service, "_create_document", raise_insert_integrity_error)
+
+    document_id, title, content = service.add_document(
+        "Text1. Text2", workspace_id, "Second"
+    )
+
+    assert document_id == winner.document_id  # type: ignore[attr-defined]
+    assert title == "First"
+    assert content == "Text1. Text2"
+    assert winner.status is DocumentStatus.PENDING
+    assert not uow.chunks._get_all()  # type: ignore[attr-defined]
+
+
+def test_concurrent_duplicate_upload_without_visible_winner_raises_custom_error(
+    uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch
+):
+    workspace_id = seed_workspace(uow)
+    service = get_ingestion_service(uow)
+    monkeypatch.setattr(service, "_check_existing_document", lambda *_: None)  # type: ignore
+    monkeypatch.setattr(service, "_create_document", raise_insert_integrity_error)
+
+    with pytest.raises(ConcurrentDocumentCreationError):
+        service.add_document("Text1. Text2", workspace_id, "Second")
 
 
 def test_add_document_returns_id_title_and_validated_content(uow: UnitOfWork):

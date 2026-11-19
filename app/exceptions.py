@@ -72,6 +72,11 @@ class DocumentNotFound(ClientError):
     detail = "Document not found"
 
 
+class ConcurrentDocumentCreationError(ServerError):
+    error_code = "concurrent_document_creation_failed"
+    detail = "A concurrent document upload could not be resolved"
+
+
 class FileProcessingError(ServerError):
     status_code = 503
     error_code = "file_processing_error"
